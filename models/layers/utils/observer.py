@@ -1,5 +1,10 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Function
+
+from models.layers.utils.quantize import quantize_tensor, dequantize_tensor
+'''This code is based on the following repository:'''
+'''https://github.com/Jermmy/pytorch-quantization-demo'''
 
 class Observer(nn.Module):
     def __init__(self, 
@@ -11,17 +16,16 @@ class Observer(nn.Module):
         self.signed = signed
 
         '''Initialize parameters for quantization'''
-        self.scale = torch.tensor([], requires_grad=False)
-        self.zero_point = torch.tensor([], requires_grad=False)
-        self.min = torch.tensor([], requires_grad=False)
-        self.max = torch.tensor([], requires_grad=False)
-        self.register_buffer('scale', self.scale)
-        self.register_buffer('zero_point', self.zero_point)
-        self.register_buffer('min', self.min)
-        self.register_buffer('max', self.max)
+        scale = torch.tensor([], requires_grad=False)
+        zero_point = torch.tensor([], requires_grad=False)
+        min = torch.tensor([], requires_grad=False)
+        max = torch.tensor([], requires_grad=False)
+        self.register_buffer('scale', scale)
+        self.register_buffer('zero_point', zero_point)
+        self.register_buffer('min', min)
+        self.register_buffer('max', max)
 
-    def update(self, 
-               tensor: torch.Tensor):
+    def update(self, tensor: torch.Tensor):
         
         '''Update parameters for quantization'''
         if self.max.nelement() == 0 or self.max.data < tensor.max().data:
@@ -34,23 +38,15 @@ class Observer(nn.Module):
 
         self.scale, self.zero_point = self.calcScaleZeroPoint()
 
-    def quantize_tensor(self, 
-                        tensor: torch.Tensor):
+    def quantize_tensor(self, tensor: torch.Tensor):
         
         '''Quantize tensor'''
-        qmin = -2**(self.num_bits-1) if self.signed else 0
-        qmax = 2**(self.num_bits-1) - 1 if self.signed else 2**self.num_bits - 1
-
-        tensor_quant = torch.round((tensor / self.scale,) + self.zero_point)
-        tensor_quant = torch.clamp(tensor_quant, qmin, qmax)
-        return tensor_quant
+        return quantize_tensor(tensor, self.scale, self.zero_point, self.num_bits, self.signed)
     
-    def dequantize_tensor(self, 
-                          tensor_quant: torch.Tensor):
+    def dequantize_tensor(self, tensor_quant: torch.Tensor):
         
         '''Dequantize tensor'''
-        tensor = self.scale * (tensor_quant - self.zero_point)
-        return tensor
+        return dequantize_tensor(tensor_quant, self.scale, self.zero_point)
 
     def calcScaleZeroPoint(self):
 
@@ -68,3 +64,17 @@ class Observer(nn.Module):
         
         zero_point.round_()
         return scale, zero_point
+    
+
+class FakeQuantize(Function):
+    '''Function for fake quantization.'''
+    '''This function is used to calculate loss that occurs due to quantization.'''
+    @staticmethod
+    def forward(ctx, x, qparam):
+        x = qparam.quantize_tensor(x)
+        x = qparam.dequantize_tensor(x)
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None

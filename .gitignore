@@ -2,3 +2,4 @@ dataset
 wandb
 lightning_logs
 event_classification
+test.py
