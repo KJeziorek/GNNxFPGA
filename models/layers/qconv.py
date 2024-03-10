@@ -140,8 +140,13 @@ class QuantGraphConv(nn.Module):
             msg = msg - self.observer_in.zero_point
         else:
             '''For other layers, we only quantize POS, because features are already quantized.'''
-            # TODO - for other convolutions, use previous features and quantize only dif POS
-            pass
+            pos_i = node[edges[:, 0]]
+            pos_j = node[edges[:, 1]]
+
+            pos = self.observer_in.quantize_tensor(pos_j - pos_i)
+            msg = torch.cat((features[edges[:, 1]], pos), dim=1)
+
+            msg = msg - self.observer_in.zero_point
         
         msg = self.linear(msg)
         msg = (msg * self.scales).round_()
