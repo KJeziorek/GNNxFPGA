@@ -67,9 +67,9 @@ class GraphGen(Module):
 
     def release(self):
         # Convert lists to tensors
-        nodes_tensor = torch.tensor(self.pos, dtype=torch.float32, device='cuda')
-        features_tensor = torch.tensor(self.features, dtype=torch.float32, device='cuda')
-        edges_tensor = torch.tensor(self.edges, dtype=torch.int32, device='cuda')
+        nodes_tensor = torch.tensor(self.pos, dtype=torch.float32, device='cpu')
+        features_tensor = torch.tensor(self.features, dtype=torch.float32, device='cpu')
+        edges_tensor = torch.tensor(self.edges, dtype=torch.int32, device='cpu')
 
         # Clear lists
         self.pos = []
