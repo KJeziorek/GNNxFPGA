@@ -102,7 +102,7 @@ class QuantGraphConv(nn.Module):
             # _ = self.norm(msg)
             # mean = Variable(self.norm.running_mean)
             # var = Variable(self.norm.running_var)
-            pass #TODO - add implementation for QAT
+            pass #TODO - add implementation for QAT, for now use only with .eval()
         else:
             mean = Variable(self.norm.running_mean)
             var = Variable(self.norm.running_var)
