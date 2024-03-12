@@ -36,13 +36,14 @@ class QuantLinear(nn.Module):
         return self.linear(features)
     
     def calibration(self, 
-                    features: torch.Tensor):
+                    features: torch.Tensor,
+                    use_obs: bool = False):
         
         '''Calibration forward for updating observers.'''
-
-        '''Update input observer.'''
-        self.observer_in.update(features)
-        features = FakeQuantize.apply(features, self.observer_in)
+        if use_obs:
+            '''Update input observer.'''
+            self.observer_in.update(features)
+            features = FakeQuantize.apply(features, self.observer_in)
 
         '''Update weight observer and propagate message through linear layer.'''
         self.observer_w.update(self.linear.weight.data)
@@ -96,9 +97,8 @@ class QuantLinear(nn.Module):
             features = features - self.observer_in.zero_point
         
         features = self.linear(features)
-        features = (features * self.scales).round_()
-        features = features + self.observer_out.zero_point
-        features.clamp(0., 2.**self.num_bits - 1.).round_()
+        features = (features*self.scales).round_() + self.observer_out.zero_point
+        features = torch.clamp_(features, 0, 2**self.num_bits - 1)
         return features
 
 

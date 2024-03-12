@@ -1,17 +1,15 @@
 import numpy as np
 
-def normalise(events, norm_value=255):
+def normalise(events, norm_value=256):
     '''Normalise events to range 0-255.'''
     
-    x = (events['x']/240)
-    x = (x*norm_value).astype(np.int32)
-
-    y = (events['y']/180)
-    y = (y*norm_value).astype(np.int32)
-
-    t = events['t'] - events['t'][0]
-    t = t/t[-1]
-    t = (t * norm_value).astype(np.int32)
-    
+    x = (events['x']*norm_value/240)
+    y = (events['y']*norm_value/180)
+    t = events['t']
     p = events['p']
-    return np.column_stack((x, y, t, p))
+    
+    t = t / 0.05
+    t = (t * norm_value)
+    
+    events = np.column_stack((x, y, t, p))
+    return events.astype(np.int32)

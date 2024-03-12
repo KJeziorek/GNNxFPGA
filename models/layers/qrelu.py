@@ -23,13 +23,14 @@ class QuantReLU(nn.Module):
         return F.relu(features)
     
     def calibration(self, 
-                    features: torch.Tensor):
+                    features: torch.Tensor,
+                    use_obs: bool = False):
         
         '''Calibration forward for updating observers.'''
-
-        '''Update input observer.'''
-        self.observer_in.update(features)
-        features = FakeQuantize.apply(features, self.observer_in)
+        if use_obs:
+            '''Update input observer.'''
+            self.observer_in.update(features)
+            features = FakeQuantize.apply(features, self.observer_in)
 
         features = F.relu(features)
         return features

@@ -8,12 +8,10 @@ from models.layers.utils.quantize import quantize_tensor, dequantize_tensor
 
 class Observer(nn.Module):
     def __init__(self, 
-                 num_bits:int = 8,
-                 signed:bool = False):
+                 num_bits:int = 8):
         super().__init__()
 
         self.num_bits = num_bits
-        self.signed = signed
 
         '''Initialize parameters for quantization'''
         scale = torch.tensor([], requires_grad=False)
@@ -41,7 +39,7 @@ class Observer(nn.Module):
     def quantize_tensor(self, tensor: torch.Tensor):
         
         '''Quantize tensor'''
-        return quantize_tensor(tensor, self.scale, self.zero_point, self.num_bits, self.signed)
+        return quantize_tensor(tensor, self.scale, self.zero_point, self.num_bits)
     
     def dequantize_tensor(self, tensor_quant: torch.Tensor):
         
@@ -51,11 +49,11 @@ class Observer(nn.Module):
     def calcScaleZeroPoint(self):
 
         '''Calculate scale and zero point for quantization'''
-        qmin = -2**(self.num_bits-1) if self.signed else 0
-        qmax = 2**(self.num_bits-1) - 1 if self.signed else 2**self.num_bits - 1
-
+        qmin = 0.
+        qmax = 2. ** self.num_bits - 1.
         scale = (self.max - self.min) / (qmax - qmin)
-        zero_point = qmax - self.max  / scale
+
+        zero_point = qmax - self.max / scale
 
         if zero_point < qmin:
             zero_point = torch.tensor([qmin], dtype=torch.float32).to(self.min.device)
@@ -63,6 +61,7 @@ class Observer(nn.Module):
             zero_point = torch.tensor([qmax], dtype=torch.float32).to(self.max.device)
         
         zero_point.round_()
+
         return scale, zero_point
     
 

@@ -32,6 +32,12 @@ class QuantGraphConv(nn.Module):
 
         self.register_buffer('scales', torch.tensor([], requires_grad=False))
 
+        self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
+
+
     def forward(self, 
                 node: torch.Tensor, 
                 features: torch.Tensor, 
@@ -81,7 +87,8 @@ class QuantGraphConv(nn.Module):
     def calibration(self, 
                     node: torch.Tensor, 
                     features: torch.Tensor, 
-                    edges: torch.Tensor):
+                    edges: torch.Tensor,
+                    use_obs: bool = False):
         
         '''Calibration forward for updating observers.'''
 
@@ -91,9 +98,10 @@ class QuantGraphConv(nn.Module):
         x_j = features[edges[:, 1]]
         msg = torch.cat((x_j, pos_j - pos_i), dim=1)
 
-        '''Update input observer.'''
-        self.observer_in.update(msg)
-        msg = FakeQuantize.apply(msg, self.observer_in)
+        if use_obs:
+            '''Update input observer.'''
+            self.observer_in.update(msg)
+            msg = FakeQuantize.apply(msg, self.observer_in)
 
         '''Update batch normalization observer.'''
         # if self.training:
@@ -124,22 +132,24 @@ class QuantGraphConv(nn.Module):
         '''Update output observer and calculate output.'''
         # self.observer_out.update(msg)
         # msg = FakeQuantize.apply(msg, self.observer_out)
- 
+
+        self.observer_out.update(msg)
+        self.observer_out.update(pos_j-pos_i)
+        msg = FakeQuantize.apply(msg, self.observer_out)
+
         '''Update graph features.'''
         unique_positions, indices = torch.unique(edges[:,0], dim=0, return_inverse=True)
         expanded_indices = indices.unsqueeze(1).expand(-1, self.output_dim)
         pooled_features = torch.zeros((unique_positions.size(0), self.output_dim), dtype=features.dtype, device=features.device)
         pooled_features = pooled_features.scatter_reduce(0, expanded_indices, msg, reduce="amax", include_self=False) # Find max features for each node
         
-        self.observer_out.update(pooled_features)
-        pooled_features = FakeQuantize.apply(pooled_features, self.observer_out)
- 
         return pooled_features
 
 
     def freeze(self,
                observer_in: Observer = None,
-               observer_out: Observer = None):
+               observer_out: Observer = None,
+               num_bits: int = 16):
         
         '''Freeze model - quantize weights/bias and calculate scales'''
         if observer_in is not None:
@@ -156,8 +166,23 @@ class QuantGraphConv(nn.Module):
         #                                             zero_point=0, 
         #                                             num_bits=32, 
         #                                             signed=True)
+        
+        scale_in = (2**num_bits-1) * self.observer_in.scale.data
+        self.observer_in.scale.data = torch.round_(torch.tensor(1540)) / (2**num_bits-1)
+        self.qscale_in.data = torch.round_(scale_in)
 
-        self.scales.data = (self.observer_in.scale * self.observer_w.scale / self.observer_out.scale).data
+        scale_w = (2**num_bits-1) * self.observer_w.scale.data
+        self.observer_w.scale.data = torch.round_(torch.tensor(243)) / (2**num_bits-1)
+        self.qscale_w.data = torch.round_(scale_w)
+
+        scale_out = (2**num_bits-1) * self.observer_out.scale.data
+        self.observer_out.scale.data = torch.round_(torch.tensor(1540)) / (2**num_bits-1)
+        self.qscale_out.data = torch.round_(scale_out)
+
+        scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
+        scale_m = (2**num_bits-1) * scale_m
+        self.scales.data = torch.round_(torch.tensor(243)) / (2**num_bits-1)
+        self.qscale_m.data = torch.round_(scale_m)
 
     def q_forward(self, 
                   node: torch.Tensor, 
@@ -183,25 +208,23 @@ class QuantGraphConv(nn.Module):
 
             pos = self.observer_in.quantize_tensor(pos_j - pos_i)
             msg = torch.cat((features[edges[:, 1]], pos), dim=1)
-            
+
         msg = msg - self.observer_in.zero_point
         msg = self.linear(msg)
-        # msg = msg * self.scales
-        # msg.round_()
-        # msg = msg + self.observer_out.zero_point
-        # msg.clamp_(0, 2**self.num_bits - 1).round_()
+        
+        msg = (msg*self.scales).round_() + self.observer_out.zero_point
+        msg = torch.clamp_(msg, 0, 2**self.num_bits - 1)
 
         '''Update graph features.'''
         unique_positions, indices = torch.unique(edges[:,0], dim=0, return_inverse=True)
         expanded_indices = indices.unsqueeze(1).expand(-1, self.output_dim)
         pooled_features = torch.zeros((unique_positions.size(0), self.output_dim), dtype=features.dtype, device=features.device)
         pooled_features = pooled_features.scatter_reduce(0, expanded_indices, msg, reduce="amax", include_self=False) # Find max features for each node
-
-
-        pooled_features = (pooled_features*self.scales).round_() + self.observer_out.zero_point
-        pooled_features = torch.clamp(pooled_features, 0, 2**self.num_bits - 1)
+        
         return pooled_features
-
+    
+    def get_parameters(self, target: str):
+        return super().get_parameter(target)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(input_dim={self.input_dim}, output_dim={self.output_dim}, bias={self.bias}, num_bits={self.num_bits})"

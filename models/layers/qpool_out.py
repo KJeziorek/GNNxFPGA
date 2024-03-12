@@ -18,9 +18,9 @@ class QuantGraphPoolOut(Module):
 
         '''Initialize quantization observers for input, weight and output tensors.'''
         self.observer_in = Observer(num_bits=num_bits)
-
         self.num_bits = num_bits
 
+        self.register_buffer('scales', torch.tensor([], requires_grad=False))
     def forward(self, 
                 vertices: torch.Tensor, 
                 features: torch.Tensor):
@@ -55,6 +55,7 @@ class QuantGraphPoolOut(Module):
     def calibration(self, 
                     vertices: torch.Tensor, 
                     features: torch.Tensor):
+
         # Redukcja wymiarowości przestrzeni wierzchołków
         normalized_vertices = torch.div(vertices, self.pool_size, rounding_mode='floor').to(torch.int64)
 
@@ -85,7 +86,8 @@ class QuantGraphPoolOut(Module):
         return output_features
     
     def freeze(self,
-               observer_in: Observer = None):
+               observer_in: Observer = None,
+               observer_out: Observer = None):
         
         '''Freeze model - quantize weights/bias and calculate scales'''
         if observer_in is not None:
@@ -106,13 +108,13 @@ class QuantGraphPoolOut(Module):
         pooled_features = torch.zeros((unique_positions.size(0), features.size(1)), dtype=features.dtype, device=features.device)
 
         if self.two_dim:
-            output_features = torch.zeros((self.grid_size ** 2, features.size(1)), dtype=features.dtype, device=features.device)  + self.observer_in.zero_point
+            output_features = torch.zeros((self.grid_size ** 2, features.size(1)), dtype=features.dtype, device=features.device) + self.observer_in.zero_point
         else:
-            output_features = torch.zeros((self.grid_size ** 3, features.size(1)), dtype=features.dtype, device=features.device)  + self.observer_in.zero_point
+            output_features = torch.zeros((self.grid_size ** 3, features.size(1)), dtype=features.dtype, device=features.device) + self.observer_in.zero_point
 
         # TODO - ("sum", "prod", "mean", "amax", "amin")
         pooled_features = pooled_features.scatter_reduce(0, indices.unsqueeze(1).expand(-1, features.size(1)), features, reduce="amax", include_self=False)
-        
+
         # Przeliczenie indeksów dla output_features
         if self.two_dim:
             indices_1d = unique_positions[:, 0] * self.grid_size + unique_positions[:, 1]
@@ -121,7 +123,6 @@ class QuantGraphPoolOut(Module):
         
         output_features[indices_1d] = pooled_features
         output_features = output_features.flatten()
-
         return output_features
     
     def __repr__(self):
