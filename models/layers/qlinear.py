@@ -68,6 +68,8 @@ class QuantLinear(nn.Module):
         if observer_out is not None:
             self.observer_out = observer_out
 
+        self.scales.data = (self.observer_in.scale * self.observer_w.scale / self.observer_out.scale).data
+
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight.data)
         self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
 
@@ -77,8 +79,6 @@ class QuantLinear(nn.Module):
                                                     zero_point=0, 
                                                     num_bits=32, 
                                                     signed=True)
-
-        self.scales.data = (self.observer_in.scale * self.observer_w.scale / self.observer_out.scale)
 
     def q_forward(self, 
                   features: torch.Tensor, 
@@ -98,7 +98,7 @@ class QuantLinear(nn.Module):
         features = self.linear(features)
         features = (features * self.scales).round_()
         features = features + self.observer_out.zero_point
-        features.clamp_(0., 2.**self.num_bits - 1.).round_()
+        features.clamp(0., 2.**self.num_bits - 1.).round_()
         return features
 
 

@@ -7,13 +7,12 @@ def quantize_tensor(tensor: torch.Tensor,
                     signed: bool = False):
         
         '''Quantize tensor'''
-        qmin = -2**(num_bits-1) if signed else 0
-        qmax = 2**(num_bits-1) - 1 if signed else 2**num_bits - 1
+        qmin = -2.**(num_bits-1) if signed else 0.
+        qmax = 2.**(num_bits-1) - 1 if signed else 2.**num_bits - 1
 
-        tensor_quant = tensor / scale + zero_point
+        tensor_quant = zero_point + (tensor / scale).round_()
         
-        tensor_quant = torch.clamp(tensor_quant, qmin, qmax).round()
-        tensor_quant = torch.round_((tensor / scale) + zero_point)
+        tensor_quant = torch.clamp(tensor_quant, qmin, qmax)
         return tensor_quant
     
 def dequantize_tensor(tensor_quant: torch.Tensor,

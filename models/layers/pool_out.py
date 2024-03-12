@@ -2,7 +2,10 @@ import torch
 from torch.nn import Module
 
 class GraphPoolOut(Module):
-    def __init__(self, pool_size=4, max_dimension=256):
+    def __init__(self, 
+                 pool_size: int = 4, 
+                 max_dimension: int = 256):
+        
         super(GraphPoolOut, self).__init__()
         self.pool_size = pool_size
         self.max_dimension = max_dimension
@@ -10,7 +13,10 @@ class GraphPoolOut(Module):
 
         self.two_dim = False
 
-    def forward(self, vertices, features):
+    def forward(self, 
+                vertices: torch.Tensor, 
+                features: torch.Tensor):
+        
         # Redukcja wymiarowości przestrzeni wierzchołków
         normalized_vertices = torch.div(vertices, self.pool_size, rounding_mode='floor').to(torch.int64)
 
@@ -40,7 +46,7 @@ class GraphPoolOut(Module):
         
         output_features[indices_1d] = pooled_features
         output_features = output_features.flatten()
-        return output_features
+        return output_features - zero_point
     
     def __repr__(self):
         return f"{self.__class__.__name__}(pool_size={self.pool_size}, max_dimension={self.max_dimension})"
