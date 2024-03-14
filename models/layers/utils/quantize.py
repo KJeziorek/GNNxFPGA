@@ -13,9 +13,11 @@ def quantize_tensor(tensor: torch.Tensor,
         else:
                 qmin = 0.
                 qmax = 2. ** num_bits - 1.
-        
-        q_x = zero_point + tensor / scale
-        q_x.clamp_(qmin, qmax).round_()
+
+        q_x = zero_point + (tensor / scale)
+        q_x[q_x > 0] = q_x[q_x > 0].floor()
+        q_x[q_x < 0] = q_x[q_x < 0].ceil()
+        q_x.clamp_(qmin, qmax)
         
         return q_x
     

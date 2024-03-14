@@ -6,9 +6,9 @@ from torchmetrics.classification import ConfusionMatrix
 
 from typing import Dict, Tuple
 from torch.nn.functional import softmax
-from models.model import Model
-from models.model_pyg import GNNModel
-# from data.data_module import EventDM
+# from models.model import Model
+from models.qmodel import Model
+
 import wandb
 import numpy as np
 import matplotlib.pyplot as plt
@@ -69,13 +69,12 @@ class LNModel(L.LightningModule):
         self.log('val_acc', accuracy, on_epoch=True, logger=True, batch_size=self.batch_size)
 
         self.val_pred = {'y': batch['y'], 'y_pred': y_prediction.cpu().numpy(), 'nodes': batch['nodes']}
-        # self.pred.append(y_prediction.cpu())
-        # self.target.append(torch.tensor(batch['y']))
         pred = softmax(outputs, dim=-1)
         top_3 = self.accuracy_top_3(preds=pred.unsqueeze(0).to(self.device), target=torch.tensor([batch['y']]).to(self.device))
         self.log('val_acc_top_3', top_3, on_epoch=True, logger=True, batch_size=self.batch_size)
     
     def on_train_epoch_end(self):
+        self.model.freeze()
         event_image = self.create_events_image(self.train_pred['nodes'])
         self.logger.experiment.log({"events_train": [wandb.Image(event_image, caption=f'GT: {self.train_pred["y"]} Pred: {self.train_pred["y_pred"]}')]})
 

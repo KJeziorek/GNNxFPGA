@@ -32,7 +32,7 @@ conv7 = QuantGraphConv(input_dim=64, output_dim=64, num_bits=bits)
 relu7 = QuantReLU(num_bits=bits)
 
 out = QuantGraphPoolOut(pool_size=4, max_dimension=16, num_bits=bits)
-linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits)
+linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=True)
 
 # f = open('/home/imperator/GNN/dataset/ncaltech101/train/accordion/image_0001.bin', 'rb')
 # raw_data = np.fromfile(f, dtype=np.uint8)
@@ -71,6 +71,8 @@ events['y'] = ev[:,1]
 events['t'] = ev[:,2]
 events['p'] = ev[:,3]
 
+events['p'][events['p'] == -1] = -1
+
 events = normalise(events)
 
 graph_generator = GraphGen(3)
@@ -81,14 +83,11 @@ for event in events.astype(np.int32):
     graph_generator.forward(event)
 nodes, features, edges = graph_generator.release()
 
-print(features)
+# print(features)
 ################################################################################
 
 x = conv1(nodes, features, edges)
 x = relu1(x)
-with open('conv1_forward.txt', 'w') as f:
-    for i in x:
-        f.write(str(i) + '\n')
 x = conv2(nodes, x, edges)
 x = relu2(x)
 node, x, edge = max_pool1(nodes, x, edges)
@@ -115,6 +114,9 @@ conv6.eval()
 conv7.eval()
 
 x = conv1(nodes, features, edges)
+with open('conv1.txt', 'w') as f:
+    for i in x:
+        f.write(str(i) + '\n')
 x = relu1(x)
 x = conv2(nodes, x, edges)
 x = relu2(x)
@@ -132,12 +134,15 @@ x = conv7(node, x, edge)
 x = relu7(x)
 x = out(node, x)
 x = linear(x)
-print(x)
+# print(x)
 print("Calibration")
 
 
 
 x = conv1.calibration(nodes, features, edges, use_obs=True)
+with open('calibration.txt', 'w') as f:
+    for i in x:
+        f.write(str(i) + '\n')
 x = relu1.calibration(x)
 x = conv2.calibration(nodes, x, edges)
 x = relu2.calibration(x)
@@ -156,7 +161,7 @@ x = relu7.calibration(x)
 x = out.calibration(node, x)
 x = linear.calibration(x)
 print('after calibration: ')
-print(x)
+# print(x)
 
 
 
@@ -181,9 +186,8 @@ linear.freeze(observer_in=conv7.observer_out)
 
 x = conv1.q_forward(nodes, features, edges, first_layer=True)
 x = relu1.q_forward(x)
-xs = x.detach().numpy()
-with open('conv1_qforward.txt', 'w') as f:
-    for i in xs:
+with open('quant.txt', 'w') as f:
+    for i in x:
         f.write(str(i) + '\n')
 x = conv2.q_forward(nodes, x, edges)
 x = relu2.q_forward(x)
@@ -201,22 +205,10 @@ x = conv7.q_forward(node, x, edge)
 x = relu7.q_forward(x)
 x = out.q_forward(node, x)
 x = linear.q_forward(x)
-# print("after deqauntisation: ")
-# print(linear.observer_out.dequantize_tensor(x))
+print("after deqauntisation: ")
+print(linear.observer_out.dequantize_tensor(x))
 
-
-print("Parameters")
-weights = conv1.linear.weight.data
-weights = weights.T
-weights = torch.flip(weights, [0])
-
-
-print(weights + conv1.observer_w.zero_point)
-print("Input zero point:", conv1.observer_in.zero_point)
-print("Output zero point:", conv1.observer_out.zero_point)
-print("Weight zero point:", conv1.observer_w.zero_point)
-print("QSCale M for 16 bits:", conv1.qscale_m)
-print("QSCale IN for 16 bits:", conv1.qscale_in)
-print("QSCale W for 16 bits:", conv1.qscale_w)
-print("QSCale OUT for 16 bits:", conv1.qscale_out)
-
+print("Conv1")
+conv1.get_parameters()
+print("COnv2")
+conv2.get_parameters()

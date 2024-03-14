@@ -10,7 +10,7 @@ class QuantLinear(nn.Module):
     def __init__(self, 
                  input_dim: int = 1, 
                  output_dim: int = 4,
-                 bias:bool = False,
+                 bias:bool = True,
                  num_bits:int = 8):
         super().__init__()
         
@@ -28,6 +28,11 @@ class QuantLinear(nn.Module):
         self.observer_out = Observer(num_bits=num_bits)
 
         self.register_buffer('scales', torch.tensor([], requires_grad=False))
+
+        self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
+        self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
 
     def forward(self, 
                 features: torch.Tensor):
@@ -61,7 +66,8 @@ class QuantLinear(nn.Module):
 
     def freeze(self,
                observer_in: Observer = None,
-               observer_out: Observer = None):
+               observer_out: Observer = None,
+               num_bits: int = 32):
         
         '''Freeze model - quantize weights/bias and calculate scales'''
         if observer_in is not None:
@@ -69,17 +75,35 @@ class QuantLinear(nn.Module):
         if observer_out is not None:
             self.observer_out = observer_out
 
-        self.scales.data = (self.observer_in.scale * self.observer_w.scale / self.observer_out.scale).data
+        scale_in = (2**num_bits-1) * self.observer_in.scale.data
+        self.observer_in.scale.data = scale_in.floor() / (2**num_bits-1)
+        self.qscale_in.data = scale_in
+
+        scale_w = (2**num_bits-1) * self.observer_w.scale.data
+        self.observer_w.scale.data = scale_w.floor() / (2**num_bits-1)
+        self.qscale_w.data = scale_in
+
+        scale_out = (2**num_bits-1) * self.observer_out.scale.data
+        self.observer_out.scale.data = scale_out.floor() / (2**num_bits-1)
+        self.qscale_out.data = scale_in
+
+        scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
+        self.scales.data = scale_m
+        self.qscale_m.data = scale_m
+        
+        self.linear = nn.Linear(self.input_dim, self.output_dim, bias=self.bias)
 
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight.data)
         self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
 
         if self.bias:
-            self.linear.bias.data = quantize_tensor(self.linear.bias.data, 
-                                                    scale=self.qi.scale * self.qw.scale,
-                                                    zero_point=0, 
-                                                    num_bits=32, 
-                                                    signed=True)
+            bias = quantize_tensor(self.linear.bias.data, 
+                                        scale=self.observer_in.scale * self.observer_w.scale,
+                                        zero_point=0, 
+                                        num_bits=32, 
+                                        signed=True)
+        
+            self.linear.bias.data = bias
 
     def q_forward(self, 
                   features: torch.Tensor, 
@@ -95,9 +119,8 @@ class QuantLinear(nn.Module):
         else:
             '''For other layers, we do not need to quantize features'''
             features = features - self.observer_in.zero_point
-        
         features = self.linear(features)
-        features = (features*self.scales).round_() + self.observer_out.zero_point
+        features = (features*self.scales).floor() + self.observer_out.zero_point
         features = torch.clamp_(features, 0, 2**self.num_bits - 1)
         return features
 

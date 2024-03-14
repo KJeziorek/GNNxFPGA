@@ -110,9 +110,9 @@ class EventDM(L.LightningDataModule):
         torch.save(data, processed_file)
 
     def setup(self, stage=None):
-        self.train_data = self.generate_ds('train', self.augmentations)
+        # self.train_data = self.generate_ds('train', self.augmentations)
         self.val_data = self.generate_ds('val')
-        self.test_data = self.generate_ds('test')
+        # self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
         processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed',  mode, '*', '*.pt'))
@@ -135,7 +135,7 @@ class EventDM(L.LightningDataModule):
 
     @property
     def classes(self):
-        return os.listdir(os.path.join(self.data_dir, self.data_name, "train"))
+        return os.listdir(os.path.join(self.data_dir, self.data_name, "val"))
     
 class EventDS(Dataset):
     def __init__(self, files, augmentations=None, dim=256):

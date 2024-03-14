@@ -42,7 +42,7 @@ class QuantGraphConv(nn.Module):
                 node: torch.Tensor, 
                 features: torch.Tensor, 
                 edges: torch.Tensor):
-
+        
         '''Standard forward pass of GraphConv layer.'''
 
         '''Calculate message for PointNet layer.'''
@@ -68,12 +68,12 @@ class QuantGraphConv(nn.Module):
         '''Merge batch normalization with Linear layer.'''
 
         if self.norm.affine:
-            gamma = self.norm.weight / std
-            weight = self.linear.weight * gamma.unsqueeze(1)
+            gamma = self.norm.weight
+            weight = (gamma / std).unsqueeze(1) * self.linear.weight
             if self.bias:
                 bias = self.linear.bias * gamma - mean * gamma + self.norm.bias
             else:
-                bias = self.norm.bias - mean * gamma
+                bias = self.norm.bias - mean * (gamma / std)
         else:
             gamma = 1 / std
             weight = self.linear.weight * gamma.unsqueeze(1)
@@ -104,35 +104,26 @@ class QuantGraphConv(nn.Module):
             msg = FakeQuantize.apply(msg, self.observer_in)
 
         '''Update batch normalization observer.'''
-        # if self.training:
-        #     # _ = self.norm(msg)
-        #     # mean = Variable(self.norm.running_mean)
-        #     # var = Variable(self.norm.running_var)
-        #     pass #TODO - add implementation for QAT, for now use only with .eval()
-        # else:
-        #     mean = Variable(self.norm.running_mean)
-        #     var = Variable(self.norm.running_var)
+        if self.training:
+            _ = self.norm(msg)
+            pass #TODO - add implementation for QAT, for now use only with .eval()
+        else:
+            mean = Variable(self.norm.running_mean)
+            var = Variable(self.norm.running_var)
 
-        # std = torch.sqrt(var + self.norm.eps)
-        # weight, bias = self.merge_norm(mean, std)
-
-        # self.observer_batch.update(weight.data)
+        std = torch.sqrt(var + self.norm.eps)
+        weight, bias = self.merge_norm(mean, std)
 
         '''Update weight observer and propagate message through linear layer.'''
-        self.observer_w.update(self.linear.weight.data)
-
-        # msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w), bias)
-        msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
+        # self.observer_w.update(weight.data)
+        self.observer_w.update(self.linear.weight)
         # TODO - Merge batch normalization will always have bias
-        # if self.bias:
-        #     msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w), self.linear.bias)
-        # else:
-        #     msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
+        # msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias)
+
+        msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
         
         '''Update output observer and calculate output.'''
-        # self.observer_out.update(msg)
-        # msg = FakeQuantize.apply(msg, self.observer_out)
-
+        '''We calibrate based on the output of the Linear and also for diff POS for next layer'''
         self.observer_out.update(msg)
         self.observer_out.update(pos_j-pos_i)
         msg = FakeQuantize.apply(msg, self.observer_out)
@@ -141,7 +132,7 @@ class QuantGraphConv(nn.Module):
         unique_positions, indices = torch.unique(edges[:,0], dim=0, return_inverse=True)
         expanded_indices = indices.unsqueeze(1).expand(-1, self.output_dim)
         pooled_features = torch.zeros((unique_positions.size(0), self.output_dim), dtype=features.dtype, device=features.device)
-        pooled_features = pooled_features.scatter_reduce(0, expanded_indices, msg, reduce="amax", include_self=False) # Find max features for each node
+        pooled_features = pooled_features.scatter_reduce(0, expanded_indices, msg, reduce="amax", include_self=False)
         
         return pooled_features
 
@@ -157,32 +148,43 @@ class QuantGraphConv(nn.Module):
         if observer_out is not None:
             self.observer_out = observer_out
 
-        self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight.data)
-        self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
-
-        # if self.bias:
-        #     self.linear.bias.data = quantize_tensor(self.linear.bias.data, 
-        #                                             scale=self.observer_in.scale * self.observer_w.scale,
-        #                                             zero_point=0, 
-        #                                             num_bits=32, 
-        #                                             signed=True)
-        
         scale_in = (2**num_bits-1) * self.observer_in.scale.data
-        self.observer_in.scale.data = torch.round_(torch.tensor(1540)) / (2**num_bits-1)
-        self.qscale_in.data = torch.round_(scale_in)
+        self.observer_in.scale.data = scale_in.floor() / (2**num_bits-1)
+        self.qscale_in.data = scale_in
 
         scale_w = (2**num_bits-1) * self.observer_w.scale.data
-        self.observer_w.scale.data = torch.round_(torch.tensor(243)) / (2**num_bits-1)
-        self.qscale_w.data = torch.round_(scale_w)
+        self.observer_w.scale.data = scale_w.floor() / (2**num_bits-1)
+        self.qscale_w.data = scale_in
 
         scale_out = (2**num_bits-1) * self.observer_out.scale.data
-        self.observer_out.scale.data = torch.round_(torch.tensor(1540)) / (2**num_bits-1)
-        self.qscale_out.data = torch.round_(scale_out)
+        self.observer_out.scale.data = scale_out.floor() / (2**num_bits-1)
+        self.qscale_out.data = scale_in
 
         scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
         scale_m = (2**num_bits-1) * scale_m
-        self.scales.data = torch.round_(torch.tensor(243)) / (2**num_bits-1)
-        self.qscale_m.data = torch.round_(scale_m)
+        self.scales.data = scale_m.floor() / (2**num_bits-1)
+        self.qscale_m.data = scale_m.floor() / (2**num_bits-1)
+
+        std = torch.sqrt(self.norm.running_var + self.norm.eps)
+        # weight, bias = self.merge_norm(self.norm.running_mean, std)
+        
+        self.linear = nn.Linear(self.input_dim + 3, self.output_dim)
+
+        # self.linear.weight.data = self.observer_w.quantize_tensor(weight)
+        self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
+        self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
+
+        # swap first 
+        # weight = torch.tensor([[176.,  18., 176.,  98., 168., 255., 222., 190.],
+        # [ 58.,  27.,  75.,  75.,  93., 162.,  65., 240.],
+        # [129., 224., 186.,  43., 213., 150., 168.,   0.],
+        # [ 70.,  10.,  40.,  10.,  22., 221.,  64., 233.]]).T - self.observer_w.zero_point
+        # self.linear.weight.data = torch.flip(weight, [0])
+        # self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
+        #                                    zero_point=0,
+        #                                    num_bits=32,
+        #                                    signed=True)
+
 
     def q_forward(self, 
                   node: torch.Tensor, 
@@ -199,7 +201,6 @@ class QuantGraphConv(nn.Module):
             pos_j = node[edges[:, 1]]
             x_j = features[edges[:, 1]]
             msg = torch.cat((x_j, pos_j - pos_i), dim=1)
-
             msg = self.observer_in.quantize_tensor(msg)
         else:
             '''For other layers, we only quantize POS, because features are already quantized.'''
@@ -211,8 +212,7 @@ class QuantGraphConv(nn.Module):
 
         msg = msg - self.observer_in.zero_point
         msg = self.linear(msg)
-        
-        msg = (msg*self.scales).round_() + self.observer_out.zero_point
+        msg = (msg*self.scales).floor() + self.observer_out.zero_point
         msg = torch.clamp_(msg, 0, 2**self.num_bits - 1)
 
         '''Update graph features.'''
@@ -223,8 +223,15 @@ class QuantGraphConv(nn.Module):
         
         return pooled_features
     
-    def get_parameters(self, target: str):
-        return super().get_parameter(target)
+    def get_parameters(self):
+        print("Input scale:", self.qscale_in)
+        print("Input zero point", self.observer_in.zero_point)
+        print("Weight scale:", self.qscale_in)
+        print("Weight zero point", self.observer_w.zero_point)
+        print("Output scale:", self.qscale_in)
+        print("Output zero point", self.observer_out.zero_point)
+
+        print("Weight", self.linear.weight)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(input_dim={self.input_dim}, output_dim={self.output_dim}, bias={self.bias}, num_bits={self.num_bits})"
