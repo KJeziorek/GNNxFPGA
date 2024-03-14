@@ -67,7 +67,7 @@ class QuantLinear(nn.Module):
     def freeze(self,
                observer_in: Observer = None,
                observer_out: Observer = None,
-               num_bits: int = 32):
+               num_bits: int = 16):
         
         '''Freeze model - quantize weights/bias and calculate scales'''
         if observer_in is not None:
@@ -75,23 +75,24 @@ class QuantLinear(nn.Module):
         if observer_out is not None:
             self.observer_out = observer_out
 
-        scale_in = (2**num_bits-1) * self.observer_in.scale.data
-        self.observer_in.scale.data = scale_in.round() / (2**num_bits-1)
-        self.qscale_in.data = scale_in
+        # scale_in = (2**num_bits-1) * self.observer_in.scale.data
+        # self.observer_in.scale.data = scale_in.round() / (2**num_bits-1)
+        # self.qscale_in.data = scale_in
 
-        scale_w = (2**num_bits-1) * self.observer_w.scale.data
-        self.observer_w.scale.data = scale_w.round() / (2**num_bits-1)
-        self.qscale_w.data = scale_in
+        # scale_w = (2**num_bits-1) * self.observer_w.scale.data
+        # self.observer_w.scale.data = scale_w.round() / (2**num_bits-1)
+        # self.qscale_w.data = scale_in
 
-        scale_out = (2**num_bits-1) * self.observer_out.scale.data
-        self.observer_out.scale.data = scale_out.round() / (2**num_bits-1)
-        self.qscale_out.data = scale_in
+        # scale_out = (2**num_bits-1) * self.observer_out.scale.data
+        # self.observer_out.scale.data = scale_out.round() / (2**num_bits-1)
+        # self.qscale_out.data = scale_in
 
-        scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
-        self.scales.data = scale_m
-        self.qscale_m.data = scale_m
-        
-        self.linear = nn.Linear(self.input_dim, self.output_dim, bias=self.bias)
+        # scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
+        # self.scales.data = scale_m
+        # self.qscale_m.data = scale_m
+            
+
+        self.scales.data = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
 
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight.data)
         self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point

@@ -32,7 +32,7 @@ conv7 = QuantGraphConv(input_dim=64, output_dim=64, num_bits=bits)
 relu7 = QuantReLU(num_bits=bits)
 
 out = QuantGraphPoolOut(pool_size=4, max_dimension=16, num_bits=bits)
-linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=False)
+linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=True)
 
 # f = open('/home/imperator/GNN/dataset/ncaltech101/train/accordion/image_0001.bin', 'rb')
 # raw_data = np.fromfile(f, dtype=np.uint8)
@@ -114,9 +114,6 @@ conv6.eval()
 conv7.eval()
 
 x = conv1(nodes, features, edges)
-with open('conv1.txt', 'w') as f:
-    for i in x:
-        f.write(str(i) + '\n')
 x = relu1(x)
 x = conv2(nodes, x, edges)
 x = relu2(x)
@@ -132,17 +129,14 @@ x = conv6(node, x, edge)
 x = relu6(x)
 x = conv7(node, x, edge)
 x = relu7(x)
-print("Calibration")
-
 x = out(node, x)
 x = linear(x)
+with open('conv1.txt', 'w') as f:
+    for i in x:
+        f.write(str(i) + '\n')
 
 
 x = conv1.calibration(nodes, features, edges, use_obs=True)
-print('after calibration: ')
-with open('calibration.txt', 'w') as f:
-    for i in x:
-        f.write(str(i) + '\n')
 x = relu1.calibration(x)
 x = conv2.calibration(nodes, x, edges)
 x = relu2.calibration(x)
@@ -160,6 +154,11 @@ x = conv7.calibration(node, x, edge)
 x = relu7.calibration(x)
 x = out.calibration(node, x)
 x = linear.calibration(x)
+
+with open('calibration.txt', 'w') as f:
+    for i in x:
+        f.write(str(i) + '\n')
+
 
 
 
@@ -183,10 +182,6 @@ linear.freeze(observer_in=conv7.observer_out)
 
 
 x = conv1.q_forward(nodes, features, edges, first_layer=True)
-fx = conv1.observer_out.dequantize_tensor(x)
-with open('quant.txt', 'w') as f:
-    for i in fx:
-        f.write(str(i) + '\n')
 x = relu1.q_forward(x)
 x = conv2.q_forward(nodes, x, edges)
 x = relu2.q_forward(x)
@@ -204,7 +199,14 @@ x = conv7.q_forward(node, x, edge)
 x = relu7.q_forward(x)
 x = out.q_forward(node, x)
 x = linear.q_forward(x)
-x = linear.observer_out.dequantize_tensor(x)
+
+fx = linear.observer_out.dequantize_tensor(x)
+with open('quant.txt', 'w') as f:
+    for i in fx:
+        f.write(str(i) + '\n')
+
+
+
 
 # print("Conv1")
 # conv1.get_parameters()

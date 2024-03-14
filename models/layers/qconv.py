@@ -170,7 +170,7 @@ class QuantGraphConv(nn.Module):
         std = torch.sqrt(self.norm.running_var + self.norm.eps)
         # weight, bias = self.merge_norm(self.norm.running_mean, std)
         
-        self.linear = nn.Linear(self.input_dim + 3, self.output_dim)
+        # self.linear = nn.Linear(self.input_dim + 3, self.output_dim)
 
         # self.linear.weight.data = self.observer_w.quantize_tensor(weight)
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
