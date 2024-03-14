@@ -76,15 +76,15 @@ class QuantLinear(nn.Module):
             self.observer_out = observer_out
 
         scale_in = (2**num_bits-1) * self.observer_in.scale.data
-        self.observer_in.scale.data = scale_in.floor() / (2**num_bits-1)
+        self.observer_in.scale.data = scale_in.round() / (2**num_bits-1)
         self.qscale_in.data = scale_in
 
         scale_w = (2**num_bits-1) * self.observer_w.scale.data
-        self.observer_w.scale.data = scale_w.floor() / (2**num_bits-1)
+        self.observer_w.scale.data = scale_w.round() / (2**num_bits-1)
         self.qscale_w.data = scale_in
 
         scale_out = (2**num_bits-1) * self.observer_out.scale.data
-        self.observer_out.scale.data = scale_out.floor() / (2**num_bits-1)
+        self.observer_out.scale.data = scale_out.round() / (2**num_bits-1)
         self.qscale_out.data = scale_in
 
         scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
@@ -120,8 +120,8 @@ class QuantLinear(nn.Module):
             '''For other layers, we do not need to quantize features'''
             features = features - self.observer_in.zero_point
         features = self.linear(features)
-        features = (features*self.scales).floor() + self.observer_out.zero_point
-        features = torch.clamp_(features, 0, 2**self.num_bits - 1)
+        features = (features*self.scales + self.observer_out.zero_point).round()
+        features = torch.clamp(features, 0, 2**self.num_bits - 1)
         return features
 
 

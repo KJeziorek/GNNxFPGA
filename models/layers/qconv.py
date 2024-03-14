@@ -103,16 +103,16 @@ class QuantGraphConv(nn.Module):
             self.observer_in.update(msg)
             msg = FakeQuantize.apply(msg, self.observer_in)
 
-        '''Update batch normalization observer.'''
-        if self.training:
-            _ = self.norm(msg)
-            pass #TODO - add implementation for QAT, for now use only with .eval()
-        else:
-            mean = Variable(self.norm.running_mean)
-            var = Variable(self.norm.running_var)
+        # '''Update batch normalization observer.'''
+        # if self.training:
+        #     _ = self.norm(msg)
+        #     pass #TODO - add implementation for QAT, for now use only with .eval()
+        # else:
+        #     mean = Variable(self.norm.running_mean)
+        #     var = Variable(self.norm.running_var)
 
-        std = torch.sqrt(var + self.norm.eps)
-        weight, bias = self.merge_norm(mean, std)
+        # std = torch.sqrt(var + self.norm.eps)
+        # weight, bias = self.merge_norm(mean, std)
 
         '''Update weight observer and propagate message through linear layer.'''
         # self.observer_w.update(weight.data)
@@ -148,23 +148,25 @@ class QuantGraphConv(nn.Module):
         if observer_out is not None:
             self.observer_out = observer_out
 
-        scale_in = (2**num_bits-1) * self.observer_in.scale.data
-        self.observer_in.scale.data = scale_in.floor() / (2**num_bits-1)
-        self.qscale_in.data = scale_in
+        # scale_in = (2**num_bits-1) * self.observer_in.scale.data
+        # self.observer_in.scale.data = scale_in.round() / (2**num_bits-1)
+        # self.qscale_in.data = scale_in
 
-        scale_w = (2**num_bits-1) * self.observer_w.scale.data
-        self.observer_w.scale.data = scale_w.floor() / (2**num_bits-1)
-        self.qscale_w.data = scale_in
+        # scale_w = (2**num_bits-1) * self.observer_w.scale.data
+        # self.observer_w.scale.data = scale_w.round() / (2**num_bits-1)
+        # self.qscale_w.data = scale_in
 
-        scale_out = (2**num_bits-1) * self.observer_out.scale.data
-        self.observer_out.scale.data = scale_out.floor() / (2**num_bits-1)
-        self.qscale_out.data = scale_in
+        # scale_out = (2**num_bits-1) * self.observer_out.scale.data
+        # self.observer_out.scale.data = scale_out.round() / (2**num_bits-1)
+        # self.qscale_out.data = scale_in
 
-        scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
-        scale_m = (2**num_bits-1) * scale_m
-        self.scales.data = scale_m.floor() / (2**num_bits-1)
-        self.qscale_m.data = scale_m.floor() / (2**num_bits-1)
+        # scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
+        # scale_m = (2**num_bits-1) * scale_m
+        # self.scales.data = scale_m.round() / (2**num_bits-1)
+        # self.qscale_m.data = scale_m.round() / (2**num_bits-1)
 
+
+        self.scales.data = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
         std = torch.sqrt(self.norm.running_var + self.norm.eps)
         # weight, bias = self.merge_norm(self.norm.running_mean, std)
         
@@ -174,12 +176,6 @@ class QuantGraphConv(nn.Module):
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
         self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
 
-        # swap first 
-        # weight = torch.tensor([[176.,  18., 176.,  98., 168., 255., 222., 190.],
-        # [ 58.,  27.,  75.,  75.,  93., 162.,  65., 240.],
-        # [129., 224., 186.,  43., 213., 150., 168.,   0.],
-        # [ 70.,  10.,  40.,  10.,  22., 221.,  64., 233.]]).T - self.observer_w.zero_point
-        # self.linear.weight.data = torch.flip(weight, [0])
         # self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
         #                                    zero_point=0,
         #                                    num_bits=32,
@@ -212,8 +208,8 @@ class QuantGraphConv(nn.Module):
 
         msg = msg - self.observer_in.zero_point
         msg = self.linear(msg)
-        msg = (msg*self.scales).floor() + self.observer_out.zero_point
-        msg = torch.clamp_(msg, 0, 2**self.num_bits - 1)
+        msg = (msg*self.scales + self.observer_out.zero_point).round() 
+        msg = torch.clamp(msg, 0, 2**self.num_bits - 1)
 
         '''Update graph features.'''
         unique_positions, indices = torch.unique(edges[:,0], dim=0, return_inverse=True)

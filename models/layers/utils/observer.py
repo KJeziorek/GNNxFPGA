@@ -60,8 +60,7 @@ class Observer(nn.Module):
         elif zero_point > qmax:
             zero_point = torch.tensor([qmax], dtype=torch.float32).to(self.max.device)
         
-        zero_point.round_()
-
+        zero_point = zero_point.round()
         return scale, zero_point
     
 

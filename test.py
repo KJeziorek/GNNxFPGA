@@ -32,7 +32,7 @@ conv7 = QuantGraphConv(input_dim=64, output_dim=64, num_bits=bits)
 relu7 = QuantReLU(num_bits=bits)
 
 out = QuantGraphPoolOut(pool_size=4, max_dimension=16, num_bits=bits)
-linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=True)
+linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=False)
 
 # f = open('/home/imperator/GNN/dataset/ncaltech101/train/accordion/image_0001.bin', 'rb')
 # raw_data = np.fromfile(f, dtype=np.uint8)
@@ -132,14 +132,14 @@ x = conv6(node, x, edge)
 x = relu6(x)
 x = conv7(node, x, edge)
 x = relu7(x)
-x = out(node, x)
-x = linear(x)
-# print(x)
 print("Calibration")
 
+x = out(node, x)
+x = linear(x)
 
 
 x = conv1.calibration(nodes, features, edges, use_obs=True)
+print('after calibration: ')
 with open('calibration.txt', 'w') as f:
     for i in x:
         f.write(str(i) + '\n')
@@ -160,8 +160,6 @@ x = conv7.calibration(node, x, edge)
 x = relu7.calibration(x)
 x = out.calibration(node, x)
 x = linear.calibration(x)
-print('after calibration: ')
-# print(x)
 
 
 
@@ -185,10 +183,11 @@ linear.freeze(observer_in=conv7.observer_out)
 
 
 x = conv1.q_forward(nodes, features, edges, first_layer=True)
-x = relu1.q_forward(x)
+fx = conv1.observer_out.dequantize_tensor(x)
 with open('quant.txt', 'w') as f:
-    for i in x:
+    for i in fx:
         f.write(str(i) + '\n')
+x = relu1.q_forward(x)
 x = conv2.q_forward(nodes, x, edges)
 x = relu2.q_forward(x)
 node, x, edge = max_pool1(nodes, x, edges)
@@ -205,10 +204,9 @@ x = conv7.q_forward(node, x, edge)
 x = relu7.q_forward(x)
 x = out.q_forward(node, x)
 x = linear.q_forward(x)
-print("after deqauntisation: ")
-print(linear.observer_out.dequantize_tensor(x))
+x = linear.observer_out.dequantize_tensor(x)
 
-print("Conv1")
-conv1.get_parameters()
-print("COnv2")
-conv2.get_parameters()
+# print("Conv1")
+# conv1.get_parameters()
+# print("COnv2")
+# conv2.get_parameters()
