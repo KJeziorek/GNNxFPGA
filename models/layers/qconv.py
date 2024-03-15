@@ -53,7 +53,7 @@ class QuantGraphConv(nn.Module):
 
         '''Propagate message through linear layer.'''
         msg = self.linear(msg)
-        # msg = self.norm(msg)
+        msg = self.norm(msg)
 
         '''Update graph features.'''
         unique_positions, indices = torch.unique(edges[:,0], dim=0, return_inverse=True)
@@ -103,24 +103,24 @@ class QuantGraphConv(nn.Module):
             self.observer_in.update(msg)
             msg = FakeQuantize.apply(msg, self.observer_in)
 
-        # '''Update batch normalization observer.'''
-        # if self.training:
-        #     _ = self.norm(msg)
-        #     pass #TODO - add implementation for QAT, for now use only with .eval()
-        # else:
-        #     mean = Variable(self.norm.running_mean)
-        #     var = Variable(self.norm.running_var)
+        '''Update batch normalization observer.'''
+        if self.training:
+            _ = self.norm(msg)
+            pass #TODO - add implementation for QAT, for now use only with .eval()
+        else:
+            mean = Variable(self.norm.running_mean)
+            var = Variable(self.norm.running_var)
 
-        # std = torch.sqrt(var + self.norm.eps)
-        # weight, bias = self.merge_norm(mean, std)
+        std = torch.sqrt(var + self.norm.eps)
+        weight, bias = self.merge_norm(mean, std)
 
         '''Update weight observer and propagate message through linear layer.'''
-        # self.observer_w.update(weight.data)
-        self.observer_w.update(self.linear.weight)
+        self.observer_w.update(weight.data)
+        # self.observer_w.update(self.linear.weight)
         # TODO - Merge batch normalization will always have bias
-        # msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias)
+        msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias)
 
-        msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
+        # msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
         
         '''Update output observer and calculate output.'''
         '''We calibrate based on the output of the Linear and also for diff POS for next layer'''
@@ -165,28 +165,29 @@ class QuantGraphConv(nn.Module):
         # self.scales.data = scale_m.round() / (2**num_bits-1)
         # self.qscale_m.data = scale_m.round() / (2**num_bits-1)
 
-
         self.scales.data = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
         std = torch.sqrt(self.norm.running_var + self.norm.eps)
-        # weight, bias = self.merge_norm(self.norm.running_mean, std)
+        weight, bias = self.merge_norm(self.norm.running_mean, std)
         
-        # self.linear = nn.Linear(self.input_dim + 3, self.output_dim)
+        self.linear = nn.Linear(self.input_dim + 3, self.output_dim, bias=True).eval()
 
-        # self.linear.weight.data = self.observer_w.quantize_tensor(weight)
-        self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
-        self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
+        with torch.no_grad():
+            self.linear.weight.data = self.observer_w.quantize_tensor(weight)
+            # self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
+            self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
 
-        # self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
-        #                                    zero_point=0,
-        #                                    num_bits=32,
-        #                                    signed=True)
+            self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
+                                            zero_point=0,
+                                            num_bits=32,
+                                            signed=True)
 
 
     def q_forward(self, 
                   node: torch.Tensor, 
                   features: torch.Tensor, 
                   edges: torch.Tensor,
-                  first_layer: bool = False):
+                  first_layer: bool = False,
+                  after_pool: bool = False):
         
         '''Quantized forward pass of GraphConv layer.'''
 
@@ -202,7 +203,6 @@ class QuantGraphConv(nn.Module):
             '''For other layers, we only quantize POS, because features are already quantized.'''
             pos_i = node[edges[:, 0]]
             pos_j = node[edges[:, 1]]
-
             pos = self.observer_in.quantize_tensor(pos_j - pos_i)
             msg = torch.cat((features[edges[:, 1]], pos), dim=1)
 

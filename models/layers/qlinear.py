@@ -91,7 +91,6 @@ class QuantLinear(nn.Module):
         # self.scales.data = scale_m
         # self.qscale_m.data = scale_m
             
-
         self.scales.data = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
 
         self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight.data)

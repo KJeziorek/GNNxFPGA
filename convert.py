@@ -6,8 +6,8 @@ from data.data_module import EventDM
 
 
 chackpoint = torch.load('model.ckpt', map_location=torch.device('cpu'))
-model = Model(num_bits=16)
-model_float = Model(num_bits=16)
+model = Model(num_bits=8)
+model_float = Model(num_bits=8)
 accuracy = Accuracy(task="multiclass", num_classes=100)
 
 #delete model. from state_dict
@@ -49,11 +49,13 @@ for idx, batch in enumerate(dm.val_dataloader()):
     y_pred = torch.argmax(pred, dim=-1)
     y_pred_float = torch.argmax(pred_float, dim=-1)
 
-    # print("Ground truth:", y, "Prediction quantized:", y_pred.item(), "Prediction float:", y_pred_float.item())
+    print("Prediction quantized:", y_pred.item(), "Prediction float:", y_pred_float.item())
     
-    if idx == 3:
+    if idx == 20:
         break
 
+
+print()
 model.freeze()
 
 print("Running model")
@@ -65,6 +67,7 @@ print("Running model")
 # print(model.conv1.observer_w.scale, model.conv1.observer_w.zero_point)
 # print(model.conv1.observer_out.scale, model.conv1.observer_out.zero_point)
 
+
 for idx, batch in enumerate(dm.val_dataloader()):
     nodes = batch['nodes']
     features = batch['features']
@@ -75,4 +78,4 @@ for idx, batch in enumerate(dm.val_dataloader()):
     y_pred = torch.argmax(pred, dim=-1)
     y_pred_float = torch.argmax(pred_float, dim=-1)
 
-    # print("Ground truth:", y, "Prediction quantized:", y_pred.item(), "Prediction float:", y_pred_float.item())
+    print("Prediction quantized:", y_pred.item(), "Prediction float:", y_pred_float.item())

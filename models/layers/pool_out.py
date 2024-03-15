@@ -46,7 +46,7 @@ class GraphPoolOut(Module):
         
         output_features[indices_1d] = pooled_features
         output_features = output_features.flatten()
-        return output_features - zero_point
+        return output_features
     
     def __repr__(self):
         return f"{self.__class__.__name__}(pool_size={self.pool_size}, max_dimension={self.max_dimension})"
