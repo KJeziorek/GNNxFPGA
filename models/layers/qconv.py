@@ -32,10 +32,10 @@ class QuantGraphConv(nn.Module):
 
         self.register_buffer('scales', torch.tensor([], requires_grad=False))
 
-        self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
 
 
     def forward(self, 
@@ -105,8 +105,12 @@ class QuantGraphConv(nn.Module):
 
         '''Update batch normalization observer.'''
         if self.training:
-            _ = self.norm(msg)
-            pass #TODO - add implementation for QAT, for now use only with .eval()
+            y = F.linear(msg, self.linear.weight, self.linear.bias)
+            #TODO - add implementation for QAT, for now use only with .eval()
+            _ = self.norm(y)
+            mean = Variable(self.norm.running_mean)
+            var = Variable(self.norm.running_var)
+
         else:
             mean = Variable(self.norm.running_mean)
             var = Variable(self.norm.running_var)
@@ -116,12 +120,10 @@ class QuantGraphConv(nn.Module):
 
         '''Update weight observer and propagate message through linear layer.'''
         self.observer_w.update(weight.data)
-        # self.observer_w.update(self.linear.weight)
-        # TODO - Merge batch normalization will always have bias
+        # Merge batch normalization will always have bias
         msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias)
 
-        # msg = F.linear(msg, FakeQuantize.apply(self.linear.weight, self.observer_w))
-        
+
         '''Update output observer and calculate output.'''
         '''We calibrate based on the output of the Linear and also for diff POS for next layer'''
         self.observer_out.update(msg)
@@ -173,7 +175,6 @@ class QuantGraphConv(nn.Module):
 
         with torch.no_grad():
             self.linear.weight.data = self.observer_w.quantize_tensor(weight)
-            # self.linear.weight.data = self.observer_w.quantize_tensor(self.linear.weight)
             self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
 
             self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
@@ -226,7 +227,6 @@ class QuantGraphConv(nn.Module):
         print("Weight zero point", self.observer_w.zero_point)
         print("Output scale:", self.qscale_in)
         print("Output zero point", self.observer_out.zero_point)
-
         print("Weight", self.linear.weight)
 
     def __repr__(self):

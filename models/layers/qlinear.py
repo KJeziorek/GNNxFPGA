@@ -29,10 +29,10 @@ class QuantLinear(nn.Module):
 
         self.register_buffer('scales', torch.tensor([], requires_grad=False))
 
-        self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
-        self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
+        # self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
 
     def forward(self, 
                 features: torch.Tensor):

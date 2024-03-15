@@ -11,7 +11,6 @@ from torch.utils.data.dataset import Dataset
 
 from models.layers.graph_gen import GraphGen
 from models.layers.augmentation import RandomHorizontalFlip, RandomPolarityFlip, RandomRotationEvent
-from models.model import Model
 from utils.normalise import normalise
 
 device = torch.device(torch.cuda.current_device()) if torch.cuda.is_available() else torch.device('cpu')
@@ -33,6 +32,7 @@ class EventDM(L.LightningDataModule):
         self.batch_size = batch_size
         self.processes = 6
 
+        self.num_classes = 100
         self.class_dict = {class_id: i for i, class_id in enumerate(self.classes)}
 
         self.random_flip = RandomHorizontalFlip(0.5)
@@ -110,9 +110,9 @@ class EventDM(L.LightningDataModule):
         torch.save(data, processed_file)
 
     def setup(self, stage=None):
-        # self.train_data = self.generate_ds('train', self.augmentations)
+        self.train_data = self.generate_ds('train', self.augmentations)
         self.val_data = self.generate_ds('val')
-        # self.test_data = self.generate_ds('test')
+        self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
         processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed',  mode, '*', '*.pt'))

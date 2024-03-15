@@ -4,10 +4,8 @@ from models.layers.qconv import QuantGraphConv
 from models.layers.qlinear import QuantLinear
 from models.layers.qrelu import QuantReLU
 from models.layers.qpool_out import QuantGraphPoolOut
-from models.layers.qmax_pool import QuantGraphPooling
 
 from models.layers.max_pool import GraphPooling
-from models.layers.pool_out import GraphPoolOut
 from models.layers.graph_gen import GraphGen
 
 from utils.normalise import normalise
@@ -19,14 +17,14 @@ conv1 = QuantGraphConv(input_dim=1, output_dim=8, num_bits=bits)
 relu1 = QuantReLU(num_bits=bits)
 conv2 = QuantGraphConv(input_dim=8, output_dim=16, num_bits=bits)
 relu2 = QuantReLU(num_bits=bits)
-max_pool1 = QuantGraphPooling(pool_size=4, max_dimension=256, num_bits=bits, only_vertices=False, self_loop=True)
+max_pool1 = GraphPooling(pool_size=4, max_dimension=256, num_bits=bits, only_vertices=False, self_loop=True)
 conv3 = QuantGraphConv(input_dim=16, output_dim=32, num_bits=bits)
 relu3 = QuantReLU(num_bits=bits)
 conv4 = QuantGraphConv(input_dim=32, output_dim=32, num_bits=bits)
 relu4 = QuantReLU(num_bits=bits)
 conv5 = QuantGraphConv(input_dim=32, output_dim=64, num_bits=bits)
 relu5 = QuantReLU(num_bits=bits)
-max_pool2 = QuantGraphPooling(pool_size=16, max_dimension=256, num_bits=bits, only_vertices=False, self_loop=True)
+max_pool2 = GraphPooling(pool_size=16, max_dimension=256, num_bits=bits, only_vertices=False, self_loop=True)
 conv6 = QuantGraphConv(input_dim=64, output_dim=64, num_bits=bits)
 relu6 = QuantReLU(num_bits=bits)
 conv7 = QuantGraphConv(input_dim=64, output_dim=64, num_bits=bits)
@@ -34,36 +32,6 @@ relu7 = QuantReLU(num_bits=bits)
 
 out = QuantGraphPoolOut(pool_size=64, max_dimension=256, num_bits=bits)
 linear = QuantLinear(input_dim=4*4*4*64, output_dim=100, num_bits=bits, bias=True)
-
-# f = open('/home/imperator/GNN/dataset/ncaltech101/train/accordion/image_0001.bin', 'rb')
-# raw_data = np.fromfile(f, dtype=np.uint8)
-# f.close()
-
-# raw_data = np.uint32(raw_data)
-
-# all_y = raw_data[1::5]
-# all_x = raw_data[0::5]
-# all_p = (raw_data[2::5] & 128) >> 7  # bit 7
-# all_ts = ((raw_data[2::5] & 127) << 16) | (raw_data[3::5] << 8) | (raw_data[4::5])
-# all_p = all_p.astype(np.float64)
-# all_p[all_p == 0] = -1
-
-# events = {}
-# events['x'] = all_x
-# events['y'] = all_y
-# events['t'] = all_ts
-# events['p'] = all_p
-
-# num_nodes = len(events['x'])
-# t = events['t'][num_nodes//2]
-# # Znalezienie indeksów używając numpy.searchsorted zamiast torch.searchsorted
-# index1 = np.clip(np.searchsorted(events['t'], t) - 1, 0, num_nodes - 1)
-# index0 = np.clip(np.searchsorted(events['t'], t-25000) - 1, 0, num_nodes - 1)
-
-# events['x'] = events['x'][index0:index1]
-# events['y'] = events['y'][index0:index1]
-# events['t'] = events['t'][index0:index1]
-# events['p'] = events['p'][index0:index1]
 
 ev = np.loadtxt('image_0003.txt').astype(np.float32)
 events = {}
