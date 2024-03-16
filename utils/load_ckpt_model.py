@@ -8,6 +8,7 @@ def load_ckpt_model(model: nn.Module,
     '''Load model from checkpoint'''
     checkpoint = torch.load(checkpoint, map_location=torch.device('cuda'))
 
+    print("\nUpdating model parameters...")
     '''Load model from checkpoint'''
     new_state_dict = {}
     for k, v in checkpoint['state_dict'].items():

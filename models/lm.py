@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import io
 
 class LNModel(L.LightningModule):
-    def __init__(self, lr, weight_decay, num_classes, batch_size):
+    def __init__(self, lr, weight_decay, num_classes, batch_size, input_dimension=256):
         super().__init__()
         self.lr = lr
         self.weight_decay = weight_decay
@@ -23,10 +23,13 @@ class LNModel(L.LightningModule):
         self.batch_size = batch_size
         self.num_classes = num_classes
 
-        self.model = Model(input_dimension=256, num_classes=num_classes)
+        self.model = Model(input_dimension=input_dimension, num_classes=num_classes)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
-        self.accuracy_top_3 = Accuracy(task="multiclass", num_classes=num_classes, top_k=3).to(self.device)
+
+        if num_classes > 3:
+            self.accuracy_top_3 = Accuracy(task="multiclass", num_classes=num_classes, top_k=3).to(self.device)
+
         # self.comfmat = ConfusionMatrix(task='multiclass', num_classes=100)
 
         self.save_hyperparameters()
@@ -67,14 +70,14 @@ class LNModel(L.LightningModule):
         accuracy = self.accuracy(preds=y_prediction.cpu().unsqueeze(0), target=torch.tensor([batch['y']]))
         self.log('val_loss', loss, on_epoch=True, logger=True, batch_size=self.batch_size)
         self.log('val_acc', accuracy, on_epoch=True, logger=True, batch_size=self.batch_size)
-
         self.val_pred = {'y': batch['y'], 'y_pred': y_prediction.cpu().numpy(), 'nodes': batch['nodes']}
-        pred = softmax(outputs, dim=-1)
-        top_3 = self.accuracy_top_3(preds=pred.unsqueeze(0).to(self.device), target=torch.tensor([batch['y']]).to(self.device))
-        self.log('val_acc_top_3', top_3, on_epoch=True, logger=True, batch_size=self.batch_size)
+
+        if self.num_classes > 3:
+            pred = softmax(outputs, dim=-1)
+            top_3 = self.accuracy_top_3(preds=pred.unsqueeze(0).to(self.device), target=torch.tensor([batch['y']]).to(self.device))
+            self.log('val_acc_top_3', top_3, on_epoch=True, logger=True, batch_size=self.batch_size)
     
     def on_train_epoch_end(self):
-        self.model.freeze()
         event_image = self.create_events_image(self.train_pred['nodes'])
         self.logger.experiment.log({"events_train": [wandb.Image(event_image, caption=f'GT: {self.train_pred["y"]} Pred: {self.train_pred["y_pred"]}')]})
 

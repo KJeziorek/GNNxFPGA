@@ -19,25 +19,25 @@ class Model(Module):
         self.conv2 = QuantGraphConv(input_dim=8, output_dim=16, bias=bias, num_bits=num_bits)
         self.relu2 = QuantReLU(num_bits=num_bits)
 
-        self.max_pool1 = GraphPooling(pool_size=4, max_dimension=input_dimension, only_vertices=False, self_loop=True)
+        self.max_pool1 = GraphPooling(pool_size=2, max_dimension=input_dimension, only_vertices=False, self_loop=True)
 
-        self.conv3 = QuantGraphConv(input_dim=16, output_dim=32, bias=bias, num_bits=num_bits)
+        self.conv3 = QuantGraphConv(input_dim=16, output_dim=16, bias=bias, num_bits=num_bits)
         self.relu3 = QuantReLU(num_bits=num_bits)
-        self.conv4 = QuantGraphConv(input_dim=32, output_dim=32, bias=bias, num_bits=num_bits)
+        self.conv4 = QuantGraphConv(input_dim=16, output_dim=32, bias=bias, num_bits=num_bits)
         self.relu4 = QuantReLU(num_bits=num_bits)
 
-        self.max_pool2 = GraphPooling(pool_size=4, max_dimension=64, only_vertices=False, self_loop=True)
+        self.max_pool2 = GraphPooling(pool_size=2, max_dimension=input_dimension//2, only_vertices=False, self_loop=True)
 
-        self.conv5 = QuantGraphConv(input_dim=32, output_dim=64, bias=bias, num_bits=num_bits)
+        self.conv5 = QuantGraphConv(input_dim=32, output_dim=32, bias=bias, num_bits=num_bits)
         self.relu5 = QuantReLU(num_bits=num_bits)
-        self.conv6 = QuantGraphConv(input_dim=64, output_dim=64, bias=bias, num_bits=num_bits)
+        self.conv6 = QuantGraphConv(input_dim=32, output_dim=32, bias=bias, num_bits=num_bits)
         self.relu6 = QuantReLU(num_bits=num_bits)
-        self.conv7 = QuantGraphConv(input_dim=64, output_dim=64, bias=bias, num_bits=num_bits)
+        self.conv7 = QuantGraphConv(input_dim=32, output_dim=32, bias=bias, num_bits=num_bits)
         self.relu7 = QuantReLU(num_bits=num_bits)
 
-        self.out = QuantGraphPoolOut(pool_size=64, max_dimension=input_dimension)
-        self.dropout = Dropout(p=0.5)
-        self.linear = QuantLinear(4*4*4*64, num_classes, bias=True)
+        self.out = QuantGraphPoolOut(pool_size=8, max_dimension=input_dimension//4)
+        self.dropout = Dropout(p=0.3)
+        self.linear = QuantLinear(4*4*4*32, num_classes, bias=True)
 
     def forward(self, nodes, features, edges):
         '''Standard forward method for training on floats'''
@@ -72,6 +72,7 @@ class Model(Module):
         features = self.relu1.calibration(features)
         features = self.conv2.calibration(nodes, features, edges)
         features = self.relu2.calibration(features)
+        
         nodes, features, edges = self.max_pool1(nodes, features, edges)
 
         features = self.conv3.calibration(nodes, features, edges)

@@ -1,4 +1,5 @@
-from data.data_module import EventDM
+from data.ncaltech101 import NCaltech101
+from data.ncars import NCars
 from models.lm import LNModel
 
 from lightning.pytorch.loggers.wandb import WandbLogger
@@ -8,14 +9,14 @@ import multiprocessing as mp
 import torch.onnx
 
 def main(args):
-    dm = EventDM(data_dir='dataset', data_name='ncaltech101', batch_size=args.batch_size)
+    # dm = NCaltech101(data_dir='dataset', data_name='ncaltech101', batch_size=args.batch_size)
+    dm = NCars(data_dir='dataset', batch_size=args.batch_size)
     dm.setup()
 
-    model = LNModel(lr=1e-4, weight_decay=5e-3, num_classes=100, batch_size=args.batch_size)
-    wandb_logger = WandbLogger(project='event_classification', name='ncaltech101', log_model='all')
+    model = LNModel(lr=1e-3, weight_decay=5e-3, num_classes=dm.num_classes, batch_size=args.batch_size, input_dimension=dm.dim)
+    wandb_logger = WandbLogger(project='event_classification', name='ncars', log_model='all')
 
-    trainer = L.Trainer(max_epochs=50, log_every_n_steps=1, gradient_clip_val=1.0, accumulate_grad_batches=64, logger=wandb_logger)
-    # trainer = L.Trainer(max_epochs=50, log_every_n_steps=1, gradient_clip_val=1.0, accumulate_grad_batches=64)
+    trainer = L.Trainer(max_epochs=100, log_every_n_steps=1, gradient_clip_val=0.0, accumulate_grad_batches=64, logger=wandb_logger)
     trainer.fit(model, dm)
 
 if __name__ == '__main__':
