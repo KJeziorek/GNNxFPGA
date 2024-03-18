@@ -14,7 +14,7 @@ class QuantGraphPoolOut(Module):
         self.max_dimension = max_dimension
         self.grid_size = max_dimension // pool_size
 
-        self.two_dim = False
+        self.two_dim = True
 
         '''Initialize quantization observers for input, weight and output tensors.'''
         self.observer_in = Observer(num_bits=num_bits)

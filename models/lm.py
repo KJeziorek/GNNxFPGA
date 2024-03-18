@@ -14,6 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import io
 
+
 class LNModel(L.LightningModule):
     def __init__(self, lr, weight_decay, num_classes, batch_size, input_dimension=256):
         super().__init__()
@@ -23,6 +24,7 @@ class LNModel(L.LightningModule):
         self.batch_size = batch_size
         self.num_classes = num_classes
 
+        self.input_dimension = input_dimension
         self.model = Model(input_dimension=input_dimension, num_classes=num_classes)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
@@ -78,11 +80,11 @@ class LNModel(L.LightningModule):
             self.log('val_acc_top_3', top_3, on_epoch=True, logger=True, batch_size=self.batch_size)
     
     def on_train_epoch_end(self):
-        event_image = self.create_events_image(self.train_pred['nodes'])
+        event_image = self.create_events_image(self.train_pred['nodes'], image_size=(self.input_dimension, self.input_dimension))
         self.logger.experiment.log({"events_train": [wandb.Image(event_image, caption=f'GT: {self.train_pred["y"]} Pred: {self.train_pred["y_pred"]}')]})
 
     def on_validation_epoch_end(self):
-        event_image = self.create_events_image(self.val_pred['nodes'])
+        event_image = self.create_events_image(self.val_pred['nodes'], image_size=(self.input_dimension, self.input_dimension))
         self.logger.experiment.log({"events_val": [wandb.Image(event_image, caption=f'GT: {self.val_pred["y"]} Pred: {self.val_pred["y_pred"]}')]})
 
     def test_step(self, batch, batch_idx):

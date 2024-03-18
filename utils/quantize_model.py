@@ -156,7 +156,7 @@ def quantize_aware_training(model: nn.Module,
         features = batch['features'].to(device)
         edges = batch['edges'].to(device)
         _ = model.calibration(nodes, features, edges)
-        if idx > 100:
+        if idx > 500:
             break
     
     
@@ -164,26 +164,32 @@ def quantize_aware_training(model: nn.Module,
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=5e-3)
     model.train()
 
-
     '''Quantize-aware training'''
     print("\nQuantize-aware training...")
     for i in range(num_epochs):
+        vec_pred = []
+        vec_true = []
         print("Epoch:", i+1)
         for idx, batch in tqdm(enumerate(dm.train_dataloader())):
             nodes = batch['nodes'].to(device)
             features = batch['features'].to(device)
             edges = batch['edges'].to(device)
-            model.calibration(nodes, features, edges)
             optimizer.zero_grad()
             pred = model.calibration(nodes, features, edges)
             loss = criterion(pred, target=torch.tensor(batch['y']).long().to('cuda'))
             loss.backward()
             optimizer.step()
 
+            y_pred = torch.argmax(pred, dim=-1)
+            vec_pred.append(y_pred.cpu().unsqueeze(0))
+            vec_true.append(batch['y'])
+        
+        vec_pred = torch.cat(vec_pred, dim=0).to('cpu')
+        vec_true = torch.tensor(vec_true).to('cpu')
+        print("Accuracy for QAT on train dataset:", accuracy(vec_pred, vec_true).item())
 
     model.eval()
     model.freeze()
-
 
     '''Performe evaluation on the validation data'''
     print("\nRunning quantized model...")
@@ -218,5 +224,78 @@ def quantize_aware_training(model: nn.Module,
     preds = torch.cat(preds, dim=0).to('cpu')
     y_true = torch.tensor(y_true).to('cpu')
     print("\nAccuracy for QAT on test dataset:", accuracy(preds, y_true).item())
+
+    return model
+
+
+def train_float_model(model: nn.Module, 
+                        dm: L.LightningDataModule,
+                        num_epochs: int = 10,
+                        device: str = 'cuda'):
+    
+    accuracy = Accuracy(task="multiclass", num_classes=dm.num_classes)
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=5e-3)
+    
+    model.to(device)
+    
+
+    '''Float model training'''
+    print("\nFloat model training...")
+    for i in range(num_epochs):
+        model.train()
+        vec_pred = []
+        vec_true = []
+        print("Epoch:", i+1)
+        for idx, batch in tqdm(enumerate(dm.train_dataloader())):
+            nodes = batch['nodes'].to(device)
+            features = batch['features'].to(device)
+            edges = batch['edges'].to(device)
+            optimizer.zero_grad()
+            pred = model(nodes, features, edges)
+            loss = criterion(pred, target=torch.tensor(batch['y']).long().to('cuda'))
+            loss.backward()
+            optimizer.step()
+
+            y_pred = torch.argmax(pred, dim=-1)
+            vec_pred.append(y_pred.cpu().unsqueeze(0))
+            vec_true.append(batch['y'])
+        
+        vec_pred = torch.cat(vec_pred, dim=0).to('cpu')
+        vec_true = torch.tensor(vec_true).to('cpu')
+        print("Accuracy for float model on train dataset:", accuracy(vec_pred, vec_true).item())
+
+        model.eval()
+        vec_pred = []
+        vec_true = []
+        for idx, batch in tqdm(enumerate(dm.val_dataloader())):
+            nodes = batch['nodes'].to(device)
+            features = batch['features'].to(device)
+            edges = batch['edges'].to(device)
+            pred = model(nodes, features, edges)
+
+            y_pred = torch.argmax(pred, dim=-1)
+            vec_pred.append(y_pred.cpu().unsqueeze(0))
+            vec_true.append(batch['y'])
+        
+        vec_pred = torch.cat(vec_pred, dim=0).to('cpu')
+        vec_true = torch.tensor(vec_true).to('cpu')
+        print("Accuracy for float model on val dataset:", accuracy(vec_pred, vec_true).item())
+
+        vec_pred = []
+        vec_true = []
+        for idx, batch in tqdm(enumerate(dm.test_dataloader())):
+            nodes = batch['nodes'].to(device)
+            features = batch['features'].to(device)
+            edges = batch['edges'].to(device)
+            pred = model(nodes, features, edges)
+
+            y_pred = torch.argmax(pred, dim=-1)
+            vec_pred.append(y_pred.cpu().unsqueeze(0))
+            vec_true.append(batch['y'])
+        
+        vec_pred = torch.cat(vec_pred, dim=0).to('cpu')
+        vec_true = torch.tensor(vec_true).to('cpu')
+        print("Accuracy for float model on test dataset:", accuracy(vec_pred, vec_true).item())
 
     return model

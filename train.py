@@ -15,7 +15,7 @@ def main(args):
 
     model = LNModel(lr=1e-3, weight_decay=5e-3, num_classes=dm.num_classes, batch_size=args.batch_size, input_dimension=dm.dim)
     wandb_logger = WandbLogger(project='event_classification', name='ncars', log_model='all')
-
+    wandb_logger.watch(model, log='gradients')
     trainer = L.Trainer(max_epochs=100, log_every_n_steps=1, gradient_clip_val=0.0, accumulate_grad_batches=64, logger=wandb_logger)
     trainer.fit(model, dm)
 

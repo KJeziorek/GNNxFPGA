@@ -124,8 +124,8 @@ class EventDS(Dataset):
         data_file = self.files[index]
         data = torch.load(data_file)
 
-        if self.augmentations:
-            for aug in self.augmentations:
-                data['nodes'], data['features'] = aug(data['nodes'], data['features'], self.dim)
+        # if self.augmentations:
+        #     for aug in self.augmentations:
+        #         data['nodes'], data['features'] = aug(data['nodes'], data['features'], self.dim)
 
         return data
