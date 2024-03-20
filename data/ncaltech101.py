@@ -16,7 +16,10 @@ from utils.normalise import normalise
 device = torch.device(torch.cuda.current_device()) if torch.cuda.is_available() else torch.device('cpu')
 
 class NCaltech101(L.LightningDataModule):
-    def __init__(self, data_dir, batch_size):
+    def __init__(self, 
+                 data_dir, 
+                 batch_size,
+                 radius=3):
         super().__init__()
         self.data_dir = data_dir
         self.data_name = 'ncaltech101'
@@ -27,6 +30,7 @@ class NCaltech101(L.LightningDataModule):
 
         self.time_window = 50000 # 50 ms
         self.dim = 256
+        self.radius = radius
 
         self.num_workers = 2
         self.batch_size = batch_size
@@ -45,7 +49,7 @@ class NCaltech101(L.LightningDataModule):
         print('Preparing data...')
         for mode in ['train', 'val', 'test']:
             print(f'Loading {mode} data')
-            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed', mode), exist_ok=True)
+            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}', mode), exist_ok=True)
             self._prepare_data(mode)
 
     def _prepare_data(self, mode: str) -> None:
@@ -53,7 +57,7 @@ class NCaltech101(L.LightningDataModule):
         process_map(self.process_file, data_files, max_workers=self.processes, chunksize=1, )
             
     def process_file(self, data_file) -> None:   
-        processed_file = data_file.replace(self.data_name, self.data_name + '_processed').replace('bin', 'pt')
+        processed_file = data_file.replace(self.data_name, self.data_name + '_processed' + f'_{self.radius}').replace('bin', 'pt')
 
         if os.path.exists(processed_file):
             return
@@ -90,15 +94,21 @@ class NCaltech101(L.LightningDataModule):
         events['y'] = events['y'][index0:index1]
         events['t'] = events['t'][index0:index1]
         events['p'] = events['p'][index0:index1]
+        events['t'] = events['t'] - events['t'][0]
 
-        # if len(events['x']) > 25000:
-        #     events['x'] = events['x'][:25000]
-        #     events['y'] = events['y'][:25000]
-        #     events['t'] = events['t'][:25000]
-        #     events['p'] = events['p'][:25000]
+        mask = (events['t'] < self.time_window)
+        events['x'] = events['x'][mask]
+        events['y'] = events['y'][mask]
+        events['t'] = events['t'][mask]
+        events['p'] = events['p'][mask]
 
-        events = normalise(events, self.dim, x_max=240, y_max=180, t_max=0.05)
-        graph_generator = GraphGen(r=5, dimension_XY=256, self_loop=True).to(device)
+        events = normalise(events, self.dim, x_max=240, y_max=180, t_max=self.time_window)
+
+        assert events[:,0].max() < self.dim
+        assert events[:,1].max() < self.dim
+        assert events[:,2].max() < self.dim
+        
+        graph_generator = GraphGen(r=self.radius, dimension_XY=self.dim, self_loop=True).to(device)
 
         for event in events.astype(np.int32):
             graph_generator.forward(event)
@@ -115,7 +125,7 @@ class NCaltech101(L.LightningDataModule):
         self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
-        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed',  mode, '*', '*.pt'))
+        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}',  mode, '*', '*.pt'))
         return EventDS(processed_files, augmentations, self.dim)
 
     def train_dataloader(self):

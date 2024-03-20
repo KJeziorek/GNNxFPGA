@@ -7,7 +7,7 @@ from torchmetrics.classification import ConfusionMatrix
 from typing import Dict, Tuple
 from torch.nn.functional import softmax
 # from models.model import Model
-from models.qmodel import Model
+from models.tiny_model import Model
 
 import wandb
 import numpy as np

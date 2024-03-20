@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,6 +22,7 @@ class QuantGraphConv(nn.Module):
         self.bias = bias
 
         self.linear = nn.Linear(input_dim + 3, output_dim, bias=bias)
+
         self.norm = nn.BatchNorm1d(output_dim)
 
         self.num_bits = num_bits
@@ -29,14 +31,17 @@ class QuantGraphConv(nn.Module):
         self.observer_in = Observer(num_bits=num_bits)
         self.observer_w = Observer(num_bits=num_bits)
         self.observer_out = Observer(num_bits=num_bits)
+        self.register_buffer('m', torch.tensor([-1], requires_grad=False))
+        
+        '''Initialize quantized version of scales.'''
+        self.register_buffer('qscale_in', torch.tensor([-1], requires_grad=False))
+        self.register_buffer('qscale_w', torch.tensor([-1], requires_grad=False))
+        self.register_buffer('qscale_out', torch.tensor([-1], requires_grad=False))
+        self.register_buffer('qscale_m', torch.tensor([-1], requires_grad=False))
 
-        self.register_buffer('scales', torch.tensor([], requires_grad=False))
-
-        # self.register_buffer('qscale_in', torch.tensor([], requires_grad=False))
-        # self.register_buffer('qscale_w', torch.tensor([], requires_grad=False))
-        # self.register_buffer('qscale_out', torch.tensor([], requires_grad=False))
-        # self.register_buffer('qscale_m', torch.tensor([], requires_grad=False))
-
+        '''Initialize numbers of bits for model quantization and scales.'''
+        self.register_buffer('num_bits_model', torch.tensor([num_bits], requires_grad=False))
+        self.register_buffer('num_bits_scale', torch.tensor([-1], requires_grad=False))
 
     def forward(self, 
                 node: torch.Tensor, 
@@ -106,7 +111,6 @@ class QuantGraphConv(nn.Module):
         '''Update batch normalization observer.'''
         if self.training:
             y = F.linear(msg, self.linear.weight, self.linear.bias)
-            #TODO - add implementation for QAT, for now use only with .eval()
             _ = self.norm(y)
             mean = Variable(self.norm.running_mean)
             var = Variable(self.norm.running_var)
@@ -119,10 +123,9 @@ class QuantGraphConv(nn.Module):
         weight, bias = self.merge_norm(mean, std)
 
         '''Update weight observer and propagate message through linear layer.'''
-        self.observer_w.update(weight.data)
-        # Merge batch normalization will always have bias
-        msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias)
+        self.observer_w.update(weight)
 
+        msg = F.linear(msg, FakeQuantize.apply(weight, self.observer_w), bias) # Merge batch normalization will always have bias
 
         '''Update output observer and calculate output.'''
         '''We calibrate based on the output of the Linear and also for diff POS for next layer'''
@@ -142,46 +145,46 @@ class QuantGraphConv(nn.Module):
     def freeze(self,
                observer_in: Observer = None,
                observer_out: Observer = None,
-               num_bits: int = 16):
-        
+               num_bits: int = 32):
+    
         '''Freeze model - quantize weights/bias and calculate scales'''
         if observer_in is not None:
             self.observer_in = observer_in
         if observer_out is not None:
             self.observer_out = observer_out
 
-        # scale_in = (2**num_bits-1) * self.observer_in.scale.data
-        # self.observer_in.scale.data = scale_in.round() / (2**num_bits-1)
-        # self.qscale_in.data = scale_in
+        self.num_bits_scale = torch.tensor([num_bits], requires_grad=False)
 
-        # scale_w = (2**num_bits-1) * self.observer_w.scale.data
-        # self.observer_w.scale.data = scale_w.round() / (2**num_bits-1)
-        # self.qscale_w.data = scale_in
+        scale_in = (2**num_bits-1) * self.observer_in.scale
+        self.qscale_in = scale_in.round()
+        self.observer_in.scale = scale_in.round() / (2**num_bits-1)
 
-        # scale_out = (2**num_bits-1) * self.observer_out.scale.data
-        # self.observer_out.scale.data = scale_out.round() / (2**num_bits-1)
-        # self.qscale_out.data = scale_in
+        scale_w = (2**num_bits-1) * self.observer_w.scale
+        self.qscale_w = scale_w.round()
+        self.observer_w.scale = scale_w.round() / (2**num_bits-1)
 
-        # scale_m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
-        # scale_m = (2**num_bits-1) * scale_m
-        # self.scales.data = scale_m.round() / (2**num_bits-1)
-        # self.qscale_m.data = scale_m.round() / (2**num_bits-1)
+        scale_out = (2**num_bits-1) * self.observer_out.scale
+        self.qscale_out = scale_out.round()
+        self.observer_out.scale = scale_out.round() / (2**num_bits-1)
 
-        self.scales.data = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale).data
+        m = (self.observer_w.scale * self.observer_in.scale / self.observer_out.scale)
+        m = (2**num_bits-1) * m
+        self.qscale_m = m.round()
+        self.m = m.round() / (2**num_bits-1)
+
         std = torch.sqrt(self.norm.running_var + self.norm.eps)
         weight, bias = self.merge_norm(self.norm.running_mean, std)
         
-        self.linear = nn.Linear(self.input_dim + 3, self.output_dim, bias=True).eval()
+        # self.linear = nn.Linear(self.input_dim + 3, self.output_dim, bias=True).eval()
 
         with torch.no_grad():
-            self.linear.weight.data = self.observer_w.quantize_tensor(weight)
-            self.linear.weight.data = self.linear.weight.data - self.observer_w.zero_point
+            self.linear.weight = torch.nn.Parameter(self.observer_w.quantize_tensor(weight))
+            self.linear.weight = torch.nn.Parameter(self.linear.weight - self.observer_w.zero_point)
 
-            self.linear.bias.data = quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
+            self.linear.bias = torch.nn.Parameter(quantize_tensor(bias, scale=self.observer_in.scale*self.observer_w.scale,
                                             zero_point=0,
                                             num_bits=32,
-                                            signed=True)
-
+                                            signed=True))
 
     def q_forward(self, 
                   node: torch.Tensor, 
@@ -209,7 +212,7 @@ class QuantGraphConv(nn.Module):
 
         msg = msg - self.observer_in.zero_point
         msg = self.linear(msg)
-        msg = (msg*self.scales + self.observer_out.zero_point).round() 
+        msg = (msg * self.m + self.observer_out.zero_point).floor() 
         msg = torch.clamp(msg, 0, 2**self.num_bits - 1)
 
         '''Update graph features.'''
@@ -220,14 +223,39 @@ class QuantGraphConv(nn.Module):
         
         return pooled_features
     
-    def get_parameters(self):
-        print("Input scale:", self.qscale_in)
-        print("Input zero point", self.observer_in.zero_point)
-        print("Weight scale:", self.qscale_in)
-        print("Weight zero point", self.observer_w.zero_point)
-        print("Output scale:", self.qscale_in)
-        print("Output zero point", self.observer_out.zero_point)
-        print("Weight", self.linear.weight)
+    def get_parameters(self,
+                       file_name: str = None):
+        
+        with open(file_name, 'w') as f:
+            '''Save scales and zero points to file.'''
+            f.write(f"Input scale ({int(self.num_bits_scale)} bit):\n {int(self.qscale_in)}\n")
+            f.write(f"Input zero point:\n {int(self.observer_in.zero_point)}\n")
+            f.write(f"Weight scale ({int(self.num_bits_scale)} bit):\n {int(self.qscale_w)}\n")
+            f.write(f"Weight zero point:\n {int(self.observer_w.zero_point)}\n")
+            f.write(f"Output scale ({int(self.num_bits_scale)} bit):\n {int(self.qscale_out)}\n")
+            f.write(f"Output zero point:\n {int(self.observer_out.zero_point)}\n")
+            f.write(f"M Scales ({int(self.num_bits_scale)} bit):\n {int(self.qscale_m)}\n")
 
+            '''Save weights and bias to file.'''
+            bias = torch.flip(self.linear.bias, [0])
+            bias = bias.detach().cpu().numpy().astype(np.int32).tolist()
+            weight = torch.flip(self.linear.weight, [0]).T
+            weight = weight.detach().cpu().numpy().astype(np.int32).tolist()
+            
+            f.write(f"Weight ({int(self.num_bits_model)} bit):\n")
+            for idx, w in enumerate(weight):
+                f.write(f"weights_conv[{idx}] = {str(w).replace('[', '{').replace(']', '}') + ';'}\n")
+
+            f.write(f"\nBias ({int(self.num_bits_model)} bit):\n")
+            f.write(f"bias_conv = {str(bias).replace('[', '{').replace(']', '}') + ';'}\n")
+
+            '''Save LUT for POS quantization to file.'''
+            input_range = list(range(int(self.observer_in.min), int(self.observer_in.max + 1)))
+            output_range = self.observer_in.quantize_tensor(torch.tensor(input_range).to(self.linear.weight.device)) - self.observer_in.zero_point
+            output_range = output_range.detach().cpu().numpy().astype(np.int32).tolist()
+
+            f.write(f"Input range ({int(self.num_bits_model)} bit):\n {input_range}\n")
+            f.write(f"Output range ({int(self.num_bits_model)} bit):\n {output_range}\n")
+        
     def __repr__(self):
         return f"{self.__class__.__name__}(input_dim={self.input_dim}, output_dim={self.output_dim}, bias={self.bias}, num_bits={self.num_bits})"

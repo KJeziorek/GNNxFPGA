@@ -14,13 +14,12 @@ class QuantGraphPoolOut(Module):
         self.max_dimension = max_dimension
         self.grid_size = max_dimension // pool_size
 
-        self.two_dim = True
+        self.two_dim = False
 
         '''Initialize quantization observers for input, weight and output tensors.'''
         self.observer_in = Observer(num_bits=num_bits)
         self.num_bits = num_bits
 
-        self.register_buffer('scales', torch.tensor([], requires_grad=False))
     def forward(self, 
                 vertices: torch.Tensor, 
                 features: torch.Tensor):

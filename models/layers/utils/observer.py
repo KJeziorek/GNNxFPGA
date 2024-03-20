@@ -26,12 +26,12 @@ class Observer(nn.Module):
     def update(self, tensor: torch.Tensor):
         
         '''Update parameters for quantization'''
-        if self.max.nelement() == 0 or self.max.data < tensor.max().data:
-            self.max.data = tensor.max().data
+        if self.max.nelement() == 0 or self.max < tensor.max():
+            self.max = tensor.max()
         self.max.clamp_(min=0)
 
-        if self.min.nelement() == 0 or self.min.data > tensor.min().data:
-            self.min.data = tensor.min().data
+        if self.min.nelement() == 0 or self.min > tensor.min():
+            self.min = tensor.min()
         self.min.clamp_(max=0)
 
         self.scale, self.zero_point = self.calcScaleZeroPoint()

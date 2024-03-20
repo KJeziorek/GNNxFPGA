@@ -16,7 +16,10 @@ from utils.normalise import normalise
 device = torch.device(torch.cuda.current_device()) if torch.cuda.is_available() else torch.device('cpu')
 
 class NCars(L.LightningDataModule):
-    def __init__(self, data_dir, batch_size):
+    def __init__(self, 
+                 data_dir, 
+                 batch_size,
+                 radius=3):
         super().__init__()
         self.data_dir = data_dir
         self.data_name = 'ncars'
@@ -26,6 +29,7 @@ class NCars(L.LightningDataModule):
         self.test_data = None
 
         self.dim = 128
+        self.radius = radius
 
         self.num_workers = 2
         self.batch_size = batch_size
@@ -34,17 +38,17 @@ class NCars(L.LightningDataModule):
         self.num_classes = 2
         self.class_dict = {'background': 0, 'car': 1}
 
-        self.random_flip = RandomHorizontalFlip(0.5)
-        self.random_polarity_flip = RandomPolarityFlip(0.5)
+        # self.random_flip = RandomHorizontalFlip(0.5)
+        # self.random_polarity_flip = RandomPolarityFlip(0.5)
         # self.random_rotation = RandomRotationEvent(5)
 
-        self.augmentations = [self.random_flip, self.random_polarity_flip]
+        # self.augmentations = [self.random_flip, self.random_polarity_flip]
 
     def prepare_data(self) -> None:
         print('Preparing data...')
         for mode in ['train', 'val', 'test']:
             print(f'Loading {mode} data')
-            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed', mode), exist_ok=True)
+            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}', mode), exist_ok=True)
             self._prepare_data(mode)
 
     def _prepare_data(self, mode: str) -> None:
@@ -52,7 +56,7 @@ class NCars(L.LightningDataModule):
         process_map(self.process_file, data_files, max_workers=self.processes, chunksize=1, )
             
     def process_file(self, data_file) -> None:   
-        processed_file = data_file.replace(self.data_name, self.data_name + '_processed').replace('txt', 'pt')
+        processed_file = data_file.replace(self.data_name, self.data_name + '_processed' + f'_{self.radius}').replace('txt', 'pt')
 
         if os.path.exists(processed_file):
             return
@@ -74,26 +78,38 @@ class NCars(L.LightningDataModule):
         events['t'] = all_ts.astype(np.float64)
         events['p'] = all_p
         
-        events = normalise(events, self.dim, x_max=120, y_max=100, t_max=events['t'].max())
-        graph_generator = GraphGen(r=3, dimension_XY=self.dim, self_loop=True).to(device)
+        mask = (events['t'] < 0.1)
+        events['x'] = events['x'][mask]
+        events['y'] = events['y'][mask]
+        events['t'] = events['t'][mask]
+        events['p'] = events['p'][mask]
+
+        events = normalise(events, self.dim, x_max=120, y_max=100, t_max=0.1)
+
+        assert events[:,0].max() < self.dim
+        assert events[:,1].max() < self.dim
+        assert events[:,2].max() < self.dim
+        
+        graph_generator = GraphGen(r=self.radius, dimension_XY=self.dim, self_loop=True).to(device)
 
         for event in events.astype(np.int32):
             graph_generator.forward(event)
         nodes, features, edges = graph_generator.release()
         
-
         y = np.loadtxt(data_file.replace('events.txt', 'is_car.txt')).astype(np.int32)
         data = {'nodes': nodes.to("cpu"), 'features': features.to("cpu"), 'edges': edges.to("cpu"), 'y': y.item()}
+
         # Save processed file
         torch.save(data, processed_file)
 
     def setup(self, stage=None):
-        self.train_data = self.generate_ds('train', self.augmentations)
+        # self.train_data = self.generate_ds('train', self.augmentations)
+        self.train_data = self.generate_ds('train')
         self.val_data = self.generate_ds('val')
         self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
-        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed',  mode, '*', '*.pt'))
+        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}',  mode, '*', '*.pt'))
         return EventDS(processed_files, augmentations, self.dim)
 
     def train_dataloader(self):
@@ -124,8 +140,8 @@ class EventDS(Dataset):
         data_file = self.files[index]
         data = torch.load(data_file)
 
-        # if self.augmentations:
-        #     for aug in self.augmentations:
-        #         data['nodes'], data['features'] = aug(data['nodes'], data['features'], self.dim)
+        if self.augmentations:
+            for aug in self.augmentations:
+                data['nodes'], data['features'] = aug(data['nodes'], data['features'], self.dim)
 
         return data
