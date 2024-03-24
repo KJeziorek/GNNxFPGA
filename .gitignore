@@ -2,7 +2,6 @@ dataset
 wandb
 lightning_logs
 event_classification
-# test.py
+qat_model.ckpt
 compare.py
 read_model.py
-qat_model.ckpt

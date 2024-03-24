@@ -72,8 +72,8 @@ def post_training_quantization(model: nn.Module,
     model.eval()
 
     print("\nRunning float model...")
-    '''Performe evaluation on the validation data for float model'''
-    preds, y_true = float_inference(model=model, data_loader=dm.val_dataloader(), device=device)
+    '''Performe evaluation on the training data for float model'''
+    preds, y_true = float_inference(model=model, data_loader=dm.train_dataloader(), device=device)
     print("\nAccuracy for float model on val dataset:", accuracy(preds, y_true).item())
 
     '''Performe evaluation on the test data for float model'''
@@ -82,7 +82,7 @@ def post_training_quantization(model: nn.Module,
 
     '''Calibrate the model on the training data to determine the quantization parameters'''
     print("\nCalibrating model...")
-    model = calibration_inference(model=model, data_loader=dm.val_dataloader(), num_calibration_samples=500, device=device)
+    model = calibration_inference(model=model, data_loader=dm.train_dataloader(), num_calibration_samples=500, device=device)
 
     model.freeze() # Freeze the model for quantization
 
@@ -91,9 +91,6 @@ def post_training_quantization(model: nn.Module,
 
     preds, y_true = quantize_inference(model=model, data_loader=dm.train_dataloader(), device=device)
     print("\nAccuracy for PTQ on train dataset:", accuracy(preds, y_true).item())
-
-    preds, y_true = quantize_inference(model=model, data_loader=dm.val_dataloader(), device=device)
-    print("\nAccuracy for PTQ on val dataset:", accuracy(preds, y_true).item())
 
     '''Performe evaluation on the test data'''
     preds, y_true = quantize_inference(model=model, data_loader=dm.test_dataloader(), device=device)
@@ -116,8 +113,8 @@ def quantize_aware_training(model: nn.Module,
 
     '''Performe evaluation on the validation data for float model'''
     print("\nRunning float model...")
-    preds, y_true = float_inference(model=model, data_loader=dm.val_dataloader(), device=device)
-    print("\nAccuracy for float model on val dataset:", accuracy(preds, y_true).item())
+    preds, y_true = float_inference(model=model, data_loader=dm.train_dataloader(), device=device)
+    print("\nAccuracy for float model on train dataset:", accuracy(preds, y_true).item())
 
     '''Performe evaluation on the test data for float model'''
     preds, y_true = float_inference(model=model, data_loader=dm.test_dataloader(), device=device)
@@ -125,7 +122,7 @@ def quantize_aware_training(model: nn.Module,
 
     '''Calibrate the model on the training data to determine the quantization parameters'''
     print("\nCalibrating model...")
-    model = calibration_inference(model=model, data_loader=dm.val_dataloader(), num_calibration_samples=500, device=device)
+    model = calibration_inference(model=model, data_loader=dm.train_dataloader(), num_calibration_samples=500, device=device)
     
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=5e-3)
@@ -156,21 +153,6 @@ def quantize_aware_training(model: nn.Module,
         print("Accuracy for QAT on train dataset:", accuracy(vec_pred, vec_true).item())
 
         model.eval()
-        vec_pred = []
-        vec_true = []
-        for idx, batch in tqdm(enumerate(dm.val_dataloader())):
-            nodes = batch['nodes'].to(device)
-            features = batch['features'].to(device)
-            edges = batch['edges'].to(device)
-            pred = model.calibration(nodes, features, edges)
-
-            y_pred = torch.argmax(pred, dim=-1)
-            vec_pred.append(y_pred.cpu().unsqueeze(0))
-            vec_true.append(batch['y'])
-        
-        vec_pred = torch.cat(vec_pred, dim=0).to('cpu')
-        vec_true = torch.tensor(vec_true).to('cpu')
-        print("Accuracy for QAT on val dataset:", accuracy(vec_pred, vec_true).item())
 
         vec_pred = []
         vec_true = []
@@ -192,11 +174,11 @@ def quantize_aware_training(model: nn.Module,
     model.freeze()
 
     '''Performe evaluation on the validation data'''
-    vpreds, vy_true = quantize_inference(model=model, data_loader=dm.val_dataloader(), device=device)
-    print("Accuracy for QAT model on val dataset:", accuracy(vpreds, vy_true).item())
+    vpreds, vy_true = quantize_inference(model=model, data_loader=dm.train_dataloader(), device=device)
+    print("Accuracy after QAT model on train dataset:", accuracy(vpreds, vy_true).item())
 
     tpreds, ty_true = quantize_inference(model=model, data_loader=dm.test_dataloader(), device=device)
-    print("Accuracy for QAT model on test dataset:", accuracy(tpreds, ty_true).item())
+    print("Accuracy after QAT model on test dataset:", accuracy(tpreds, ty_true).item())
 
     torch.save(model.state_dict(), dir_name + '/qat_model.ckpt')
     return model
@@ -210,7 +192,6 @@ def train_float_model(model: nn.Module,
                         dir_name: str = 'tiny_model'):
     
     best_test_accuracy = 0
-    best_val_accuracy = 0
 
     accuracy = Accuracy(task="multiclass", num_classes=dm.num_classes)
     criterion = torch.nn.CrossEntropyLoss()
@@ -250,14 +231,10 @@ def train_float_model(model: nn.Module,
 
         model.eval()
 
-        vpreds, vy_true = float_inference(model=model, data_loader=dm.val_dataloader(), device=device)
-        print("Accuracy for float model on val dataset:", accuracy(vpreds, vy_true).item())
-
         tpreds, ty_true = float_inference(model=model, data_loader=dm.test_dataloader(), device=device)
         print("Accuracy for float model on test dataset:", accuracy(tpreds, ty_true).item())
 
-        if accuracy(tpreds, ty_true).item() > best_test_accuracy or accuracy(vpreds, vy_true).item() > best_val_accuracy:
+        if accuracy(tpreds, ty_true).item() > best_test_accuracy:
             best_test_accuracy = accuracy(tpreds, ty_true).item()
-            best_val_accuracy = accuracy(vpreds, vy_true).item()
             torch.save(model.state_dict(), dir_name+'/float_model.ckpt')
     return model
