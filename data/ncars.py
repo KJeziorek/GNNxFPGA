@@ -25,7 +25,6 @@ class NCars(L.LightningDataModule):
         self.data_name = 'ncars'
 
         self.train_data = None
-        self.val_data = None
         self.test_data = None
 
         self.dim = 128
@@ -46,9 +45,9 @@ class NCars(L.LightningDataModule):
 
     def prepare_data(self) -> None:
         print('Preparing data...')
-        for mode in ['train', 'val', 'test']:
+        for mode in ['train', 'test']:
             print(f'Loading {mode} data')
-            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}', mode), exist_ok=True)
+            os.makedirs(os.path.join(self.data_dir, self.data_name, 'processed' + f'_{self.radius}', mode), exist_ok=True)
             self._prepare_data(mode)
 
     def _prepare_data(self, mode: str) -> None:
@@ -56,7 +55,7 @@ class NCars(L.LightningDataModule):
         process_map(self.process_file, data_files, max_workers=self.processes, chunksize=1, )
             
     def process_file(self, data_file) -> None:   
-        processed_file = data_file.replace(self.data_name, self.data_name + '_processed' + f'_{self.radius}').replace('txt', 'pt')
+        processed_file = data_file.replace(self.data_name, self.data_name + '/processed' + f'_{self.radius}').replace('txt', 'pt')
 
         if os.path.exists(processed_file):
             return
@@ -105,26 +104,19 @@ class NCars(L.LightningDataModule):
     def setup(self, stage=None):
         # self.train_data = self.generate_ds('train', self.augmentations)
         self.train_data = self.generate_ds('train')
-        self.val_data = self.generate_ds('val')
         self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
-        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}',  mode, '*', '*.pt'))
+        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name, 'processed' + f'_{self.radius}',  mode, '*', '*.pt'))
         return EventDS(processed_files, augmentations, self.dim)
 
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True, collate_fn=self.collate_fn, persistent_workers=False)
 
-    def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, collate_fn=self.collate_fn, persistent_workers=False)
-
     def test_dataloader(self):
         return DataLoader(self.test_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, collate_fn=self.collate_fn, persistent_workers=False)
     
     def collate_fn(self, data_list):
-        # Load batch_size files into list and merged them to one big Data object
-        # batch = Batch.from_data_list(data_list)
-        # batch.batch_idx =torch.tensor(sum([[i] * len(data.y) for i, data in enumerate(data_list)], []))
         return data_list[0]
     
 class EventDS(Dataset):

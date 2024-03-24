@@ -25,7 +25,6 @@ class NCaltech101(L.LightningDataModule):
         self.data_name = 'ncaltech101'
 
         self.train_data = None
-        self.val_data = None
         self.test_data = None
 
         self.time_window = 50000 # 50 ms
@@ -39,17 +38,17 @@ class NCaltech101(L.LightningDataModule):
         self.num_classes = 100
         self.class_dict = {class_id: i for i, class_id in enumerate(self.classes)}
 
-        self.random_flip = RandomHorizontalFlip(0.5)
-        self.random_polarity_flip = RandomPolarityFlip(0.5)
+        # self.random_flip = RandomHorizontalFlip(0.5)
+        # self.random_polarity_flip = RandomPolarityFlip(0.5)
         # self.random_rotation = RandomRotationEvent(5)
 
-        self.augmentations = [self.random_flip, self.random_polarity_flip]
+        # self.augmentations = [self.random_flip, self.random_polarity_flip]
 
     def prepare_data(self) -> None:
         print('Preparing data...')
         for mode in ['train', 'val', 'test']:
             print(f'Loading {mode} data')
-            os.makedirs(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}', mode), exist_ok=True)
+            os.makedirs(os.path.join(self.data_dir, self.data_name, 'processed' + f'_{self.radius}', mode), exist_ok=True)
             self._prepare_data(mode)
 
     def _prepare_data(self, mode: str) -> None:
@@ -57,7 +56,7 @@ class NCaltech101(L.LightningDataModule):
         process_map(self.process_file, data_files, max_workers=self.processes, chunksize=1, )
             
     def process_file(self, data_file) -> None:   
-        processed_file = data_file.replace(self.data_name, self.data_name + '_processed' + f'_{self.radius}').replace('bin', 'pt')
+        processed_file = data_file.replace(self.data_name, self.data_name + '/processed' + f'_{self.radius}').replace('bin', 'pt')
 
         if os.path.exists(processed_file):
             return
@@ -120,32 +119,26 @@ class NCaltech101(L.LightningDataModule):
         torch.save(data, processed_file)
 
     def setup(self, stage=None):
-        self.train_data = self.generate_ds('train', self.augmentations)
-        self.val_data = self.generate_ds('val')
+        # self.train_data = self.generate_ds('train', self.augmentations)
+        self.train_data = self.generate_ds('train')
         self.test_data = self.generate_ds('test')
 
     def generate_ds(self, mode: str, augmentations=None):
-        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name + '_processed' + f'_{self.radius}',  mode, '*', '*.pt'))
+        processed_files = glob.glob(os.path.join(self.data_dir, self.data_name, 'processed' + f'_{self.radius}',  mode, '*', '*.pt'))
         return EventDS(processed_files, augmentations, self.dim)
 
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True, collate_fn=self.collate_fn, persistent_workers=False)
 
-    def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, collate_fn=self.collate_fn, persistent_workers=False)
-
     def test_dataloader(self):
         return DataLoader(self.test_data, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, collate_fn=self.collate_fn, persistent_workers=False)
     
     def collate_fn(self, data_list):
-        # Load batch_size files into list and merged them to one big Data object
-        # batch = Batch.from_data_list(data_list)
-        # batch.batch_idx =torch.tensor(sum([[i] * len(data.y) for i, data in enumerate(data_list)], []))
         return data_list[0]
 
     @property
     def classes(self):
-        return os.listdir(os.path.join(self.data_dir, self.data_name, "val"))
+        return os.listdir(os.path.join(self.data_dir, self.data_name, "train"))
     
 class EventDS(Dataset):
     def __init__(self, files, augmentations=None, dim=256):

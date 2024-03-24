@@ -6,13 +6,13 @@ from models.layers.qlinear import QuantLinear
 from models.layers.qrelu import QuantReLU
 from models.layers.max_pool import GraphPooling
     
-class Model(Module):
+class BModel(Module):
     def __init__(self, 
                  input_dimension: int = 256,
                  bias: bool = False, 
                  num_classes: int = 100, 
                  num_bits: int = 8):
-        super(Model, self).__init__()
+        super(BModel, self).__init__()
 
         self.conv1 = QuantGraphConv(input_dim=1, output_dim=8, bias=bias, num_bits=num_bits)
         self.relu1 = QuantReLU(num_bits=num_bits)
@@ -25,20 +25,20 @@ class Model(Module):
         self.relu3 = QuantReLU(num_bits=num_bits)
         self.conv4 = QuantGraphConv(input_dim=32, output_dim=32, bias=bias, num_bits=num_bits)
         self.relu4 = QuantReLU(num_bits=num_bits)
-        self.conv5 = QuantGraphConv(input_dim=32, output_dim=64, bias=bias, num_bits=num_bits)
-        self.relu5 = QuantReLU(num_bits=num_bits)
 
         self.max_pool2 = GraphPooling(pool_size=4, max_dimension=input_dimension//4, only_vertices=False, self_loop=True)
 
+        self.conv5 = QuantGraphConv(input_dim=32, output_dim=64, bias=bias, num_bits=num_bits)
+        self.relu5 = QuantReLU(num_bits=num_bits)
         self.conv6 = QuantGraphConv(input_dim=64, output_dim=64, bias=bias, num_bits=num_bits)
         self.relu6 = QuantReLU(num_bits=num_bits)
-        self.conv7 = QuantGraphConv(input_dim=64, output_dim=64, bias=bias, num_bits=num_bits)
+        self.conv7 = QuantGraphConv(input_dim=64, output_dim=128, bias=bias, num_bits=num_bits)
         self.relu7 = QuantReLU(num_bits=num_bits)
 
         out_pull = 4 if input_dimension==256 else 2
         self.out = QuantGraphPoolOut(pool_size=out_pull, max_dimension=input_dimension//16)
         self.dropout = Dropout(p=0.3)
-        self.linear = QuantLinear(4*4*4*64, num_classes, bias=False)
+        self.linear = QuantLinear(4*4*4*128, num_classes, bias=False)
 
     def forward(self, nodes, features, edges):
         '''Standard forward method for training on floats'''
@@ -53,11 +53,11 @@ class Model(Module):
         features = self.relu3(features)
         features = self.conv4(nodes, features, edges)
         features = self.relu4(features)
-        features = self.conv5(nodes, features, edges)
-        features = self.relu5(features)
 
         nodes, features, edges = self.max_pool2(nodes, features, edges)
 
+        features = self.conv5(nodes, features, edges)
+        features = self.relu5(features)
         features = self.conv6(nodes, features, edges)
         features = self.relu6(features)
         features = self.conv7(nodes, features, edges)
@@ -80,11 +80,11 @@ class Model(Module):
         features = self.relu3.calibration(features)
         features = self.conv4.calibration(nodes, features, edges)
         features = self.relu4.calibration(features)
-        features = self.conv5.calibration(nodes, features, edges)
-        features = self.relu5.calibration(features)
 
         nodes, features, edges = self.max_pool2(nodes, features, edges)
 
+        features = self.conv5.calibration(nodes, features, edges)
+        features = self.relu5.calibration(features)
         features = self.conv6.calibration(nodes, features, edges)
         features = self.relu6.calibration(features)
         features = self.conv7.calibration(nodes, features, edges)
@@ -128,11 +128,11 @@ class Model(Module):
         features = self.relu3.q_forward(features)
         features = self.conv4.q_forward(nodes, features, edges)
         features = self.relu4.q_forward(features)
-        features = self.conv5.q_forward(nodes, features, edges)
-        features = self.relu5.q_forward(features)
 
         nodes, features, edges = self.max_pool2(nodes, features, edges)
 
+        features = self.conv5.q_forward(nodes, features, edges)
+        features = self.relu5.q_forward(features)
         features = self.conv6.q_forward(nodes, features, edges)
         features = self.relu6.q_forward(features)
         features = self.conv7.q_forward(nodes, features, edges)
@@ -145,11 +145,11 @@ class Model(Module):
         return features
     
     def get_parameters(self):
-        self.conv1.get_parameters('base_conv1_param.txt')
-        self.conv2.get_parameters('base_conv2_param.txt')
-        self.conv3.get_parameters('base_conv3_param.txt')
-        self.conv4.get_parameters('base_conv4_param.txt')
-        self.conv5.get_parameters('base_conv5_param.txt')
-        self.conv6.get_parameters('base_conv6_param.txt')
-        self.conv7.get_parameters('base_conv7_param.txt')
-        self.linear.get_parameters('base_linear_param.txt')
+        self.conv1.get_parameters('medium_conv1_param.txt')
+        self.conv2.get_parameters('medium_conv2_param.txt')
+        self.conv3.get_parameters('medium_conv3_param.txt')
+        self.conv4.get_parameters('medium_conv4_param.txt')
+        self.conv5.get_parameters('medium_conv5_param.txt')
+        self.conv6.get_parameters('medium_conv6_param.txt')
+        self.conv7.get_parameters('medium_conv7_param.txt')
+        self.linear.get_parameters('medium_linear_param.txt')

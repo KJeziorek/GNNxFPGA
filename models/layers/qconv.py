@@ -239,7 +239,7 @@ class QuantGraphConv(nn.Module):
             '''Save weights and bias to file.'''
             bias = torch.flip(self.linear.bias, [0])
             bias = bias.detach().cpu().numpy().astype(np.int32).tolist()
-            weight = torch.flip(self.linear.weight, [0]).T
+            weight = torch.flip(self.linear.weight, [1])
             weight = weight.detach().cpu().numpy().astype(np.int32).tolist()
             
             f.write(f"Weight ({int(self.num_bits_model)} bit):\n")
@@ -257,5 +257,17 @@ class QuantGraphConv(nn.Module):
             f.write(f"Input range ({int(self.num_bits_model)} bit):\n {input_range}\n")
             f.write(f"Output range ({int(self.num_bits_model)} bit):\n {output_range}\n")
         
+        with open(file_name.replace('.txt', '.mem'), 'w') as f:
+            for idx, we in enumerate(weight):
+                bin_vec = [np.binary_repr(w, width=9) for w in we]
+                dlugi_ciag_bitow = ''.join(bin_vec)
+                wartosc_hex = hex(int(dlugi_ciag_bitow, 2))
+                f.write(f"{str(wartosc_hex)[2:]}\n")
+            
+            bin_bias = [np.binary_repr(b, width=32) for b in bias]
+            dlugi_ciag_bitow = ''.join(bin_bias)
+            wartosc_hex = hex(int(dlugi_ciag_bitow, 2))
+            f.write(f"{str(wartosc_hex)[2:]}\n")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(input_dim={self.input_dim}, output_dim={self.output_dim}, bias={self.bias}, num_bits={self.num_bits})"

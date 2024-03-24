@@ -4,3 +4,5 @@ lightning_logs
 event_classification
 # test.py
 compare.py
+read_model.py
+qat_model.ckpt

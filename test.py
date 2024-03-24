@@ -1,6 +1,9 @@
 import torch
 import numpy as np
-from models.tiny_model import Model
+import os
+from models.tiny_model import TModel
+from models.base_model import BModel
+
 from data.ncaltech101 import NCaltech101
 from data.ncars import NCars
 
@@ -10,21 +13,28 @@ from utils.load_ckpt_model import load_ckpt_model
 torch.manual_seed(12345)
 
 
-# dm = NCaltech101(data_dir='dataset', batch_size=1)
+folder_name = 'base_model_ncars'
+os.makedirs(folder_name, exist_ok=True)
+# dm = NCaltech101(data_dir='dataset', batch_size=1, radius=3)
 dm = NCars(data_dir='dataset', batch_size=1, radius=3)
 dm.setup()
 
-model = Model(input_dimension=dm.dim, num_classes=dm.num_classes, num_bits=8)
-# model = train_float_model(model, dm, num_epochs=1, batch_size=16, device='cuda')
-# torch.save(model.state_dict(), 'model_ncars.ckpt')
-model.load_state_dict(torch.load('model_ncars.ckpt', map_location='cuda'))
+model = BModel(input_dimension=dm.dim, num_classes=dm.num_classes, num_bits=8, bias=False)
+model = train_float_model(model, dm, num_epochs=25, batch_size=16, device='cuda', dir_name=folder_name)
+
+model.load_state_dict(torch.load(folder_name+'/float_model.ckpt', map_location='cuda'))
+
+# model = post_training_quantization(model, dm, device='cuda', dir_name=folder_name)
 
 # model = Model(input_dimension=dm.dim, num_classes=dm.num_classes, num_bits=8)
 # model = load_ckpt_model(model, 'ncars.ckpt')
-# model = post_training_quantization(model, dm, num_calibration_samples=500, device='cuda')
+
+# model = post_training_quantization(model, dm, device='cuda', dir_name=folder_name)
+# torch.save(model.state_dict(), 'tiny_model_ptq_ncars.ckpt')
 
 
 # model = Model(input_dimension=dm.dim, num_classes=dm.num_classes, num_bits=8)
 # model = load_ckpt_model(model, 'ncars.ckpt')
-model = quantize_aware_training(model, dm, num_epochs=1, device='cuda')
-torch.save(model.state_dict(), 'model_quantized_ncars.ckpt')
+model = quantize_aware_training(model, dm, num_epochs=10, device='cuda', dir_name=folder_name)
+
+# model.get_parameters()
