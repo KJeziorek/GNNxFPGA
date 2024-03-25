@@ -52,6 +52,7 @@ class RandomRotationEvent(torch.nn.Module):
         # Filter out events outside the sensor dimensions
         mask = (nodes[:, 0] > 0) & (nodes[:, 0] < dim) & (nodes[:, 1] > 0) & (nodes[:, 1] < dim)
         nodes, features = nodes[mask], features[mask]
+
         return nodes, features
 
     def __repr__(self) -> str:

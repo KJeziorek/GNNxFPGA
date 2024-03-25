@@ -24,7 +24,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='cifar')
+    parser.add_argument('--dataset', type=str, default='mnist')
     parser.add_argument('--radius', type=int, default=3)
 
     args = parser.parse_args()

@@ -32,7 +32,7 @@ class MnistDVS(L.LightningDataModule):
 
         self.num_workers = 2
         self.batch_size = batch_size
-        self.processes = 6
+        self.processes = 1
 
         self.num_classes = 10
 
@@ -87,7 +87,6 @@ class MnistDVS(L.LightningDataModule):
             graph_generator.forward(event)
         nodes, features, edges = graph_generator.release()
         
-        print(y)
         y = data_file.split('/')[-2]
         data = {'nodes': nodes.to("cpu"), 'features': features.to("cpu"), 'edges': edges.to("cpu"), 'y': y}
         # Save processed file
@@ -126,6 +125,8 @@ class EventDS(Dataset):
     def __getitem__(self, index: int):
         data_file = self.files[index]
         data = torch.load(data_file)
+
+        data['y'] = int(data['y'])
 
         if self.augmentations:
             for aug in self.augmentations:

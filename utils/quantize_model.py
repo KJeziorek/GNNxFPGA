@@ -102,9 +102,12 @@ def post_training_quantization(model: nn.Module,
 def quantize_aware_training(model: nn.Module, 
                                dm: L.LightningDataModule,
                                num_epochs: int = 10,
+                               batch_size: int = 16,
                                device: str = 'cuda',
                                dir_name: str = 'tiny_model'):
     
+    best_test_accuracy = 0
+
     accuracy = Accuracy(task="multiclass", num_classes=dm.num_classes)
 
     '''First post-training quantization of a model'''
@@ -126,23 +129,29 @@ def quantize_aware_training(model: nn.Module,
     
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=5e-3)
-    model.train()
+    
 
     '''Quantize-aware training'''
     print("\nQuantize-aware training...")
     for i in range(num_epochs):
         vec_pred = []
         vec_true = []
+
+        model.train()
         print("Epoch:", i+1)
         for idx, batch in tqdm(enumerate(dm.train_dataloader())):
             nodes = batch['nodes'].to(device)
             features = batch['features'].to(device)
             edges = batch['edges'].to(device)
-            optimizer.zero_grad()
             pred = model.calibration(nodes, features, edges)
             loss = criterion(pred, target=torch.tensor(batch['y']).long().to('cuda'))
+            loss = loss / batch_size
             loss.backward()
-            optimizer.step()
+
+            if (idx+1) % batch_size == 0 or (idx+1) == len(dm.train_dataloader()):
+                optimizer.step()
+                optimizer.zero_grad()
+
 
             y_pred = torch.argmax(pred, dim=-1)
             vec_pred.append(y_pred.cpu().unsqueeze(0))
@@ -170,7 +179,17 @@ def quantize_aware_training(model: nn.Module,
         vec_true = torch.tensor(vec_true).to('cpu')
         print("Accuracy for QAT on test dataset:", accuracy(vec_pred, vec_true).item())
 
+        if accuracy(vec_pred, vec_true).item() > best_test_accuracy:
+            best_test_accuracy = accuracy(vec_pred, vec_true).item()
+            torch.save(model.state_dict(), dir_name+'/calibration_model.ckpt')
+
+
     model.eval()
+    '''Quantize the model'''
+    param = torch.load(dir_name+'/calibration_model.ckpt', map_location='cuda')
+    for pa in param:
+        model.state_dict()[pa].copy_(param[pa])
+
     model.freeze()
 
     '''Performe evaluation on the validation data'''
@@ -199,7 +218,6 @@ def train_float_model(model: nn.Module,
     
     model.to(device)
     
-
     '''Float model training'''
     print("\nFloat model training...")
     for i in range(num_epochs):

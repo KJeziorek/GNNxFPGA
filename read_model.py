@@ -45,7 +45,7 @@ for pa in param:
     model.state_dict()[pa].copy_(param[pa])
 # model.load_state_dict(torch.load('tiny_model_ncars/float_model.ckpt', map_location='cuda'))
 
-model.get_parameters()
+# model.get_parameters()
 model.q_forward(nodes.to('cuda'), features.to('cuda'), edges.to('cuda'))
 
 # dm = NCars(data_dir='dataset', batch_size=1, radius=3)

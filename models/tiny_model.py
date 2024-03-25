@@ -114,12 +114,11 @@ class TModel(Module):
         '''Forward method for quantized model'''
         features = self.conv1.q_forward(nodes, features, edges, first_layer=True)
         features = self.relu1.q_forward(features)
-        
+
         nodes, features, edges = self.max_pool1(nodes, features, edges)
 
         features = self.conv2.q_forward(nodes, features, edges)
         features = self.relu2.q_forward(features)
-
         features = self.conv3.q_forward(nodes, features, edges)
         features = self.relu3.q_forward(features)
 
@@ -127,7 +126,6 @@ class TModel(Module):
 
         features = self.conv4.q_forward(nodes, features, edges)
         features = self.relu4.q_forward(features)
-        
         features = self.conv5.q_forward(nodes, features, edges)
         features = self.relu5.q_forward(features)
 

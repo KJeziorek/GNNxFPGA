@@ -259,15 +259,12 @@ class QuantGraphConv(nn.Module):
         
         with open(file_name.replace('.txt', '.mem'), 'w') as f:
             for idx, we in enumerate(weight):
-                bin_vec = [np.binary_repr(w, width=9) for w in we]
+                bin_vec = [np.binary_repr(w+self.observer_w.zero_point.to(torch.int32).item(), width=9)[1:] for w in we]
+                # Concat to bin_vec binary repr of bias
+                bin_vec = bin_vec + [np.binary_repr(bias[len(bias)-idx-1], width=32)]
                 dlugi_ciag_bitow = ''.join(bin_vec)
                 wartosc_hex = hex(int(dlugi_ciag_bitow, 2))
                 f.write(f"{str(wartosc_hex)[2:]}\n")
-            
-            bin_bias = [np.binary_repr(b, width=32) for b in bias]
-            dlugi_ciag_bitow = ''.join(bin_bias)
-            wartosc_hex = hex(int(dlugi_ciag_bitow, 2))
-            f.write(f"{str(wartosc_hex)[2:]}\n")
 
     def __repr__(self):
         return f"{self.__class__.__name__}(input_dim={self.input_dim}, output_dim={self.output_dim}, bias={self.bias}, num_bits={self.num_bits})"

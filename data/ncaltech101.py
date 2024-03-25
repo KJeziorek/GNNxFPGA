@@ -46,7 +46,7 @@ class NCaltech101(L.LightningDataModule):
 
     def prepare_data(self) -> None:
         print('Preparing data...')
-        for mode in ['train', 'val', 'test']:
+        for mode in ['train', 'test']:
             print(f'Loading {mode} data')
             os.makedirs(os.path.join(self.data_dir, self.data_name, 'processed' + f'_{self.radius}', mode), exist_ok=True)
             self._prepare_data(mode)
